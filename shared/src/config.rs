@@ -7,7 +7,6 @@ pub struct Config {
     pub server: ServerConfig,
     pub finnhub: FinnhubConfig,
     pub gemini: GeminiConfig,
-    pub updater: UpdaterConfig,
     #[serde(default)]
     pub pdf: PdfConfig,
 }
@@ -33,11 +32,6 @@ pub struct GeminiConfig {
     #[serde(default)]
     pub api_key_env: Option<String>,
     pub model: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct UpdaterConfig {
-    pub interval_secs: u64,
 }
 
 fn resolve_key(direct: &Option<String>, env_name: &Option<String>, label: &str) -> Result<String> {

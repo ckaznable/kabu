@@ -18,7 +18,3 @@ model = "gemini-2.5-flash-lite"
 # Set password directly, or set password_env to read from an environment variable
 password = ""
 password_env = "PDF_PASSWORD"
-
-[updater]
-# Price update interval in seconds
-interval_secs = 300
