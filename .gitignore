@@ -1,0 +1,12 @@
+/target
+*.db
+*.db-shm
+*.db-wal
+.env
+config.toml
+
+# Frontend
+frontend/node_modules
+frontend/dist
+
+CLAUDE.md

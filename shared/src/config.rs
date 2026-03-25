@@ -1,0 +1,105 @@
+use anyhow::{bail, Result};
+use serde::Deserialize;
+use std::path::Path;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Config {
+    pub server: ServerConfig,
+    pub finnhub: FinnhubConfig,
+    pub gemini: GeminiConfig,
+    pub updater: UpdaterConfig,
+    #[serde(default)]
+    pub pdf: PdfConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServerConfig {
+    pub port: u16,
+    pub database_url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FinnhubConfig {
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GeminiConfig {
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+    pub model: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdaterConfig {
+    pub interval_secs: u64,
+}
+
+fn resolve_key(direct: &Option<String>, env_name: &Option<String>, label: &str) -> Result<String> {
+    if let Some(key) = direct {
+        if !key.is_empty() {
+            return Ok(key.clone());
+        }
+    }
+    if let Some(env_var) = env_name {
+        if !env_var.is_empty() {
+            return std::env::var(env_var)
+                .map_err(|_| anyhow::anyhow!("{}: env var '{}' is not set", label, env_var));
+        }
+    }
+    bail!("{}: neither api_key nor api_key_env is configured", label)
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PdfConfig {
+    #[serde(default)]
+    pub password: Option<String>,
+    #[serde(default)]
+    pub password_env: Option<String>,
+}
+
+impl PdfConfig {
+    pub fn resolve_password(&self) -> Option<String> {
+        if let Some(pw) = &self.password {
+            if !pw.is_empty() {
+                return Some(pw.clone());
+            }
+        }
+        if let Some(env_var) = &self.password_env {
+            if !env_var.is_empty() {
+                return std::env::var(env_var).ok();
+            }
+        }
+        None
+    }
+}
+
+impl FinnhubConfig {
+    pub fn resolve_api_key(&self) -> Result<String> {
+        resolve_key(&self.api_key, &self.api_key_env, "finnhub")
+    }
+}
+
+impl GeminiConfig {
+    pub fn resolve_api_key(&self) -> Result<String> {
+        resolve_key(&self.api_key, &self.api_key_env, "gemini")
+    }
+}
+
+impl Config {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+        let content = std::fs::read_to_string(path.as_ref())?;
+        let config: Config = toml::from_str(&content)?;
+        Ok(config)
+    }
+
+    pub fn load_default() -> Result<Self> {
+        let path = std::env::var("KABU_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
+        Self::load(&path)
+    }
+}
