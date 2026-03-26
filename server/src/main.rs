@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
             get(routes::stocks::list).post(routes::stocks::create),
         )
         .route(
-            "/api/stocks/:id",
+            "/api/stocks/{id}",
             get(routes::stocks::get_one)
                 .put(routes::stocks::update)
                 .delete(routes::stocks::delete_one),

@@ -1,11 +1,9 @@
 use axum::extract::{Multipart, State};
 use axum::http::StatusCode;
-use axum::Json;
 
 use crate::gemini;
 use crate::AppState;
 use kabu_shared::db;
-use kabu_shared::models::Transaction;
 
 fn decrypt_pdf_if_needed(
     pdf_bytes: &[u8],
@@ -30,7 +28,7 @@ fn decrypt_pdf_if_needed(
 pub async fn upload(
     State(state): State<AppState>,
     mut multipart: Multipart,
-) -> Result<Json<Vec<Transaction>>, (StatusCode, String)> {
+) -> Result<StatusCode, (StatusCode, String)> {
     let mut pdf_bytes = None;
 
     while let Some(field) = multipart
@@ -54,33 +52,39 @@ pub async fn upload(
     let decrypted = decrypt_pdf_if_needed(&pdf_bytes, state.pdf_password.as_deref())
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
-    let extracted =
-        gemini::extract_transactions_from_pdf(&state.gemini_api_key, &state.gemini_model, &decrypted)
-            .await
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to process PDF: {}", e),
-                )
-            })?;
-
-    let mut transactions = Vec::new();
-    for tx in &extracted {
-        let transaction = db::insert_transaction(
-            &state.db,
-            &tx.symbol,
-            &tx.transaction_type,
-            tx.quantity,
-            tx.price,
-            tx.total,
-            tx.date.as_deref(),
-            Some("pdf"),
-            None,
+    tokio::spawn(async move {
+        match gemini::extract_transactions_from_pdf(
+            &state.gemini_api_key,
+            &state.gemini_model,
+            &decrypted,
         )
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        transactions.push(transaction);
-    }
+        {
+            Ok(extracted) => {
+                for tx in &extracted {
+                    if let Err(e) = db::insert_transaction(
+                        &state.db,
+                        &tx.symbol,
+                        &tx.transaction_type,
+                        tx.quantity,
+                        tx.price,
+                        tx.total,
+                        tx.date.as_deref(),
+                        Some("pdf"),
+                        None,
+                    )
+                    .await
+                    {
+                        tracing::error!("Failed to insert transaction: {}", e);
+                    }
+                }
+                tracing::info!("PDF processed: {} transactions extracted", extracted.len());
+            }
+            Err(e) => {
+                tracing::error!("Failed to process PDF: {}", e);
+            }
+        }
+    });
 
-    Ok(Json(transactions))
+    Ok(StatusCode::ACCEPTED)
 }

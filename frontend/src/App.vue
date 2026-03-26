@@ -12,8 +12,8 @@ async function handleUpload() {
   uploading.value = true
   uploadResult.value = ''
   try {
-    const txs = await uploadPdf(file)
-    uploadResult.value = `Extracted ${txs.length} transaction(s)`
+    await uploadPdf(file)
+    uploadResult.value = 'PDF uploaded, processing in background'
   } catch (e: unknown) {
     uploadResult.value = `Error: ${e instanceof Error ? e.message : e}`
   } finally {

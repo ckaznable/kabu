@@ -1,8 +1,8 @@
 use kabu_shared::models::*;
-use specta::ts::{self, ExportConfiguration};
+use specta::ts::{self, BigIntExportBehavior, ExportConfiguration};
 
 fn main() {
-    let config = ExportConfiguration::default();
+    let config = ExportConfiguration::default().bigint(BigIntExportBehavior::Number);
 
     let types = [
         ts::export::<Stock>(&config),

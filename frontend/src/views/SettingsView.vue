@@ -83,10 +83,22 @@ const fmt = (n: number) =>
       <section class="section">
         <h2>Add Stock</h2>
         <form class="add-form" @submit.prevent="handleAdd">
-          <input v-model="newSymbol" placeholder="Symbol (e.g. AAPL)" required />
-          <input v-model="newName" placeholder="Name (optional)" />
-          <input v-model.number="newQty" type="number" step="any" placeholder="Quantity" />
-          <input v-model.number="newCost" type="number" step="any" placeholder="Total Cost" />
+          <label class="form-field">
+            <span class="form-label">Symbol</span>
+            <input v-model="newSymbol" placeholder="e.g. AAPL" required />
+          </label>
+          <label class="form-field">
+            <span class="form-label">Name</span>
+            <input v-model="newName" placeholder="optional" />
+          </label>
+          <label class="form-field">
+            <span class="form-label">Quantity</span>
+            <input v-model.number="newQty" type="number" step="any" />
+          </label>
+          <label class="form-field">
+            <span class="form-label">Total Cost</span>
+            <input v-model.number="newCost" type="number" step="any" />
+          </label>
           <button class="btn" type="submit">Add</button>
         </form>
       </section>
@@ -167,6 +179,17 @@ h2 {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.form-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .add-form input {

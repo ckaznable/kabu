@@ -55,7 +55,7 @@ export async function deleteStock(id: number): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete stock')
 }
 
-export async function uploadPdf(file: File): Promise<Transaction[]> {
+export async function uploadPdf(file: File): Promise<void> {
   const formData = new FormData()
   formData.append('file', file)
   const res = await fetch('/api/pdf/upload', {
@@ -66,7 +66,6 @@ export async function uploadPdf(file: File): Promise<Transaction[]> {
     const text = await res.text()
     throw new Error(text || 'Failed to upload PDF')
   }
-  return res.json()
 }
 
 export async function fetchTransactions(): Promise<Transaction[]> {
