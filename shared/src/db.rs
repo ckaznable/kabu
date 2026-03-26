@@ -189,6 +189,56 @@ pub async fn list_transactions(pool: &SqlitePool) -> Result<Vec<Transaction>> {
     Ok(txs)
 }
 
+/// Upsert stock from a transaction: create if not exists, update quantity/cost on BUY/SELL.
+pub async fn apply_transaction_to_stock(
+    pool: &SqlitePool,
+    symbol: &str,
+    transaction_type: &str,
+    quantity: f64,
+    total: f64,
+) -> Result<()> {
+    let existing = get_stock_by_symbol(pool, symbol).await?;
+
+    match transaction_type {
+        "BUY" => {
+            if let Some(stock) = existing {
+                sqlx::query(
+                    "UPDATE stocks SET quantity = quantity + ?, cost_basis = cost_basis + ?, updated_at = datetime('now') WHERE id = ?",
+                )
+                .bind(quantity)
+                .bind(total)
+                .bind(stock.id)
+                .execute(pool)
+                .await?;
+            } else {
+                create_stock(pool, symbol, None, quantity, total).await?;
+            }
+        }
+        "SELL" => {
+            if let Some(stock) = existing {
+                let new_qty = (stock.quantity - quantity).max(0.0);
+                let cost_ratio = if stock.quantity > 0.0 {
+                    quantity / stock.quantity
+                } else {
+                    0.0
+                };
+                let cost_reduction = stock.cost_basis * cost_ratio;
+                sqlx::query(
+                    "UPDATE stocks SET quantity = ?, cost_basis = cost_basis - ?, updated_at = datetime('now') WHERE id = ?",
+                )
+                .bind(new_qty)
+                .bind(cost_reduction)
+                .bind(stock.id)
+                .execute(pool)
+                .await?;
+            }
+        }
+        _ => {} // DIVIDEND etc. — no change to holdings
+    }
+
+    Ok(())
+}
+
 pub async fn list_all_symbols(pool: &SqlitePool) -> Result<Vec<String>> {
     let rows: Vec<(String,)> =
         sqlx::query_as("SELECT DISTINCT symbol FROM stocks ORDER BY symbol")

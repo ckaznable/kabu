@@ -10,11 +10,6 @@ struct GeminiRequest {
 }
 
 #[derive(Debug, Serialize)]
-struct BatchRequest {
-    requests: Vec<GeminiRequest>,
-}
-
-#[derive(Debug, Serialize)]
 struct Content {
     parts: Vec<Part>,
 }
@@ -44,12 +39,6 @@ struct GenerationConfig {
     response_mime_type: String,
     #[serde(rename = "responseJsonSchema")]
     response_json_schema: serde_json::Value,
-}
-
-#[derive(Debug, Deserialize)]
-struct BatchResponse {
-    responses: Option<Vec<GeminiResponse>>,
-    error: Option<GeminiError>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,18 +130,6 @@ fn build_response_schema() -> serde_json::Value {
     })
 }
 
-fn extract_text_from_response(resp: &GeminiResponse) -> Result<&str> {
-    if let Some(err) = &resp.error {
-        anyhow::bail!("Gemini API error: {}", err.message);
-    }
-    resp.candidates
-        .as_ref()
-        .and_then(|c| c.first())
-        .and_then(|c| c.content.parts.first())
-        .and_then(|p| p.text.as_deref())
-        .ok_or_else(|| anyhow::anyhow!("No response from Gemini"))
-}
-
 pub async fn extract_transactions_from_pdf(
     api_key: &str,
     model: &str,
@@ -163,51 +140,69 @@ pub async fn extract_transactions_from_pdf(
     let client = reqwest::Client::new();
     let base64_pdf = base64::engine::general_purpose::STANDARD.encode(pdf_bytes);
 
-    let generation_config = GenerationConfig {
-        response_mime_type: "application/json".to_string(),
-        response_json_schema: build_response_schema(),
-    };
-
-    let batch = BatchRequest {
-        requests: vec![GeminiRequest {
-            contents: vec![Content {
-                parts: vec![
-                    Part::InlineData {
-                        inline_data: InlineData {
-                            mime_type: "application/pdf".to_string(),
-                            data: base64_pdf,
-                        },
+    let request = GeminiRequest {
+        contents: vec![Content {
+            parts: vec![
+                Part::InlineData {
+                    inline_data: InlineData {
+                        mime_type: "application/pdf".to_string(),
+                        data: base64_pdf,
                     },
-                    Part::Text {
-                        text: PROMPT.to_string(),
-                    },
-                ],
-            }],
-            generation_config,
+                },
+                Part::Text {
+                    text: PROMPT.to_string(),
+                },
+            ],
         }],
+        generation_config: GenerationConfig {
+            response_mime_type: "application/json".to_string(),
+            response_json_schema: build_response_schema(),
+        },
     };
 
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:batchGenerateContent?key={}",
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
         model, api_key
     );
 
-    let response = client.post(&url).json(&batch).send().await?;
-    let batch_resp: BatchResponse = response.json().await?;
+    const MAX_RETRIES: u32 = 3;
+    const RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(180);
 
-    if let Some(err) = batch_resp.error {
-        anyhow::bail!("Gemini batch API error: {}", err.message);
+    let mut last_error = String::new();
+
+    for attempt in 0..=MAX_RETRIES {
+        if attempt > 0 {
+            tracing::warn!(
+                "Gemini high demand, retrying in {}s (attempt {}/{})",
+                RETRY_DELAY.as_secs(),
+                attempt,
+                MAX_RETRIES
+            );
+            tokio::time::sleep(RETRY_DELAY).await;
+        }
+
+        let response = client.post(&url).json(&request).send().await?;
+        let gemini_resp: GeminiResponse = response.json().await?;
+
+        if let Some(err) = gemini_resp.error {
+            if err.message.contains("high demand") && attempt < MAX_RETRIES {
+                last_error = err.message;
+                continue;
+            }
+            anyhow::bail!("Gemini API error: {}", err.message);
+        }
+
+        let text = gemini_resp
+            .candidates
+            .as_ref()
+            .and_then(|c| c.first())
+            .and_then(|c| c.content.parts.first())
+            .and_then(|p| p.text.as_deref())
+            .ok_or_else(|| anyhow::anyhow!("No response from Gemini"))?;
+
+        let extracted: ExtractedResponse = serde_json::from_str(text)?;
+        return Ok(extracted.transactions);
     }
 
-    let responses = batch_resp
-        .responses
-        .ok_or_else(|| anyhow::anyhow!("Empty batch response from Gemini"))?;
-
-    let first = responses
-        .first()
-        .ok_or_else(|| anyhow::anyhow!("No responses in batch result"))?;
-
-    let text = extract_text_from_response(first)?;
-    let extracted: ExtractedResponse = serde_json::from_str(text)?;
-    Ok(extracted.transactions)
+    anyhow::bail!("Gemini API failed after {} retries: {}", MAX_RETRIES, last_error)
 }

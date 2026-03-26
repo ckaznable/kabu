@@ -9,20 +9,22 @@ fn decrypt_pdf_if_needed(
     pdf_bytes: &[u8],
     password: Option<&str>,
 ) -> Result<Vec<u8>, String> {
-    let mut doc = lopdf::Document::load_mem(pdf_bytes)
+    // Quick check: try loading to see if encrypted
+    let doc = lopdf::Document::load_mem(pdf_bytes)
         .map_err(|e| format!("Failed to parse PDF: {}", e))?;
 
-    if doc.is_encrypted() {
-        let password = password.ok_or("PDF is encrypted but no password configured")?;
-        doc.decrypt(password)
-            .map_err(|e| format!("Failed to decrypt PDF: {}", e))?;
-        let mut output = Vec::new();
-        doc.save_to(&mut output)
-            .map_err(|e| format!("Failed to export decrypted PDF: {}", e))?;
-        Ok(output)
-    } else {
-        Ok(pdf_bytes.to_vec())
+    if !doc.is_encrypted() {
+        return Ok(pdf_bytes.to_vec());
     }
+
+    let password = password.ok_or("PDF is encrypted but no password configured")?;
+    let mut doc = lopdf::Document::load_mem_with_password(pdf_bytes, password)
+        .map_err(|e| format!("Failed to decrypt PDF: {}", e))?;
+
+    let mut output = Vec::new();
+    doc.save_modern(&mut output)
+        .map_err(|e| format!("Failed to export decrypted PDF: {}", e))?;
+    Ok(output)
 }
 
 pub async fn upload(
@@ -76,6 +78,18 @@ pub async fn upload(
                     .await
                     {
                         tracing::error!("Failed to insert transaction: {}", e);
+                        continue;
+                    }
+                    if let Err(e) = db::apply_transaction_to_stock(
+                        &state.db,
+                        &tx.symbol,
+                        &tx.transaction_type,
+                        tx.quantity,
+                        tx.total,
+                    )
+                    .await
+                    {
+                        tracing::error!("Failed to update stock for {}: {}", tx.symbol, e);
                     }
                 }
                 tracing::info!("PDF processed: {} transactions extracted", extracted.len());
