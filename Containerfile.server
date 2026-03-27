@@ -29,6 +29,6 @@ COPY --from=builder /app/target/release/kabu-server .
 COPY --from=frontend /app/frontend/dist ./frontend/dist/
 COPY migrations/ migrations/
 
-EXPOSE 3000
+EXPOSE 8100
 
 ENTRYPOINT ["./kabu-server"]
