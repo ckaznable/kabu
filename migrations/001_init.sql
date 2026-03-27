@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS stocks (
     name TEXT,
     quantity REAL NOT NULL DEFAULT 0,
     cost_basis REAL NOT NULL DEFAULT 0,
+    asset_type TEXT NOT NULL DEFAULT 'stock',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -18,6 +19,14 @@ CREATE TABLE IF NOT EXISTS prices (
     low REAL,
     open REAL,
     previous_close REAL,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS exchange_rates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    base TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    rate REAL NOT NULL,
     timestamp TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

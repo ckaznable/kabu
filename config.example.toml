@@ -13,6 +13,16 @@ api_key = ""
 api_key_env = "GEMINI_API_KEY"
 model = "gemini-2.5-flash-lite"
 
+[exchange_rate]
+# Frankfurter API (ECB data, no key required)
+base = "USD"
+currencies = ["TWD", "JPY", "EUR"]
+
+[coinmarketcap]
+# For crypto prices — get a free key at https://coinmarketcap.com/api/
+api_key = ""
+api_key_env = "CMC_API_KEY"
+
 [pdf]
 # PDF decryption password (for encrypted financial statements)
 # Set password directly, or set password_env to read from an environment variable

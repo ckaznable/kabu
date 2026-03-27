@@ -3,12 +3,13 @@ export type {
   CreateStock,
   UpdateStock,
   Price,
+  ExchangeRate,
   Transaction,
   PortfolioSummary,
   HoldingSummary,
 } from './types'
 
-import type { Stock, PortfolioSummary, Transaction } from './types'
+import type { Stock, Price, ExchangeRate, PortfolioSummary, Transaction } from './types'
 
 export async function fetchPortfolio(): Promise<PortfolioSummary> {
   const res = await fetch('/api/portfolio/summary')
@@ -27,6 +28,7 @@ export async function createStock(data: {
   name?: string
   quantity: number
   cost_basis: number
+  asset_type?: string
 }): Promise<Stock> {
   const res = await fetch('/api/stocks', {
     method: 'POST',
@@ -71,5 +73,21 @@ export async function uploadPdf(file: File): Promise<void> {
 export async function fetchTransactions(): Promise<Transaction[]> {
   const res = await fetch('/api/transactions')
   if (!res.ok) throw new Error('Failed to fetch transactions')
+  return res.json()
+}
+
+export async function fetchExchangeRates(): Promise<ExchangeRate[]> {
+  const res = await fetch('/api/exchange-rates')
+  if (!res.ok) throw new Error('Failed to fetch exchange rates')
+  return res.json()
+}
+
+export async function fetchPriceHistory(
+  symbol: string,
+  limit?: number
+): Promise<Price[]> {
+  const params = limit ? `?limit=${limit}` : ''
+  const res = await fetch(`/api/prices/${encodeURIComponent(symbol)}${params}`)
+  if (!res.ok) throw new Error('Failed to fetch price history')
   return res.json()
 }

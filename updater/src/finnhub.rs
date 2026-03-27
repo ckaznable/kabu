@@ -16,29 +16,29 @@ struct QuoteResponse {
     pc: f64,         // previous close
 }
 
-async fn fetch_quote(api_key: &str, symbol: &str) -> Result<QuoteResponse> {
+async fn fetch_stock_quote(api_key: &str, symbol: &str) -> Result<QuoteResponse> {
     let client = reqwest::Client::new();
     let url = format!(
         "https://finnhub.io/api/v1/quote?symbol={}&token={}",
         symbol, api_key
     );
-
     let response = client.get(&url).send().await?.json::<QuoteResponse>().await?;
     Ok(response)
 }
 
-pub async fn update_all_prices(pool: &SqlitePool, api_key: &str) -> Result<()> {
-    let symbols = db::list_all_symbols(pool).await?;
-
+pub async fn update_stock_prices(
+    pool: &SqlitePool,
+    api_key: &str,
+    symbols: &[String],
+) -> Result<()> {
     if symbols.is_empty() {
-        tracing::info!("No stocks to update");
         return Ok(());
     }
 
-    tracing::info!("Updating prices for {} stocks", symbols.len());
+    tracing::info!("Updating stock prices for {} symbols", symbols.len());
 
-    for symbol in &symbols {
-        match fetch_quote(api_key, symbol).await {
+    for symbol in symbols {
+        match fetch_stock_quote(api_key, symbol).await {
             Ok(quote) => {
                 if quote.c == 0.0 {
                     tracing::warn!("Got zero price for {}, skipping", symbol);

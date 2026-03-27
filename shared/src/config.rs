@@ -8,6 +8,10 @@ pub struct Config {
     pub finnhub: FinnhubConfig,
     pub gemini: GeminiConfig,
     #[serde(default)]
+    pub coinmarketcap: CoinMarketCapConfig,
+    #[serde(default)]
+    pub exchange_rate: ExchangeRateConfig,
+    #[serde(default)]
     pub pdf: PdfConfig,
 }
 
@@ -73,6 +77,45 @@ impl PdfConfig {
     }
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CoinMarketCapConfig {
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+}
+
+impl CoinMarketCapConfig {
+    pub fn resolve_api_key(&self) -> Result<String> {
+        resolve_key(&self.api_key, &self.api_key_env, "coinmarketcap")
+    }
+}
+
+fn default_base_currency() -> String {
+    "USD".to_string()
+}
+
+fn default_target_currencies() -> Vec<String> {
+    vec!["TWD".to_string()]
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExchangeRateConfig {
+    #[serde(default = "default_base_currency")]
+    pub base: String,
+    #[serde(default = "default_target_currencies")]
+    pub currencies: Vec<String>,
+}
+
+impl Default for ExchangeRateConfig {
+    fn default() -> Self {
+        Self {
+            base: default_base_currency(),
+            currencies: default_target_currencies(),
+        }
+    }
+}
+
 impl FinnhubConfig {
     pub fn resolve_api_key(&self) -> Result<String> {
         resolve_key(&self.api_key, &self.api_key_env, "finnhub")
@@ -93,7 +136,18 @@ impl Config {
     }
 
     pub fn load_default() -> Result<Self> {
-        let path = std::env::var("KABU_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
-        Self::load(&path)
+        // Priority: KABU_CONFIG env > XDG config > ./config.toml
+        if let Ok(path) = std::env::var("KABU_CONFIG") {
+            return Self::load(&path);
+        }
+
+        if let Some(config_dir) = dirs::config_dir() {
+            let path = config_dir.join("kabu/config.toml");
+            if path.exists() {
+                return Self::load(&path);
+            }
+        }
+
+        Self::load("config.toml")
     }
 }

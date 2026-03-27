@@ -3,7 +3,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::str::FromStr;
 
-use crate::models::{Price, Stock, Transaction};
+use crate::models::{ExchangeRate, Price, Stock, Transaction};
 
 pub async fn init_pool(database_url: &str) -> Result<SqlitePool> {
     let options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
@@ -21,6 +21,12 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     sqlx::query(include_str!("../../migrations/001_init.sql"))
         .execute(pool)
         .await?;
+
+    // Add asset_type column to existing databases
+    let _ = sqlx::query("ALTER TABLE stocks ADD COLUMN asset_type TEXT NOT NULL DEFAULT 'stock'")
+        .execute(pool)
+        .await;
+
     Ok(())
 }
 
@@ -55,14 +61,16 @@ pub async fn create_stock(
     name: Option<&str>,
     quantity: f64,
     cost_basis: f64,
+    asset_type: &str,
 ) -> Result<Stock> {
     let result = sqlx::query(
-        "INSERT INTO stocks (symbol, name, quantity, cost_basis) VALUES (?, ?, ?, ?)",
+        "INSERT INTO stocks (symbol, name, quantity, cost_basis, asset_type) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(symbol.to_uppercase())
     .bind(name)
     .bind(quantity)
     .bind(cost_basis)
+    .bind(asset_type)
     .execute(pool)
     .await?;
 
@@ -146,6 +154,21 @@ pub async fn get_all_latest_prices(pool: &SqlitePool) -> Result<Vec<Price>> {
     Ok(prices)
 }
 
+pub async fn get_price_history(
+    pool: &SqlitePool,
+    symbol: &str,
+    limit: i64,
+) -> Result<Vec<Price>> {
+    let prices = sqlx::query_as::<_, Price>(
+        "SELECT * FROM prices WHERE symbol = ? ORDER BY id DESC LIMIT ?",
+    )
+    .bind(symbol)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(prices)
+}
+
 // --- Transactions ---
 
 pub async fn insert_transaction(
@@ -211,7 +234,7 @@ pub async fn apply_transaction_to_stock(
                 .execute(pool)
                 .await?;
             } else {
-                create_stock(pool, symbol, None, quantity, total).await?;
+                create_stock(pool, symbol, None, quantity, total, "stock").await?;
             }
         }
         "SELL" => {
@@ -239,10 +262,58 @@ pub async fn apply_transaction_to_stock(
     Ok(())
 }
 
-pub async fn list_all_symbols(pool: &SqlitePool) -> Result<Vec<String>> {
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT DISTINCT symbol FROM stocks ORDER BY symbol")
+pub async fn list_stocks_by_type(pool: &SqlitePool) -> Result<Vec<(String, String)>> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT symbol, asset_type FROM stocks ORDER BY symbol")
             .fetch_all(pool)
             .await?;
-    Ok(rows.into_iter().map(|r| r.0).collect())
+    Ok(rows)
+}
+
+// --- Exchange Rates ---
+
+pub async fn upsert_exchange_rate(
+    pool: &SqlitePool,
+    base: &str,
+    currency: &str,
+    rate: f64,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO exchange_rates (base, currency, rate) VALUES (?, ?, ?)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(base)
+    .bind(currency)
+    .bind(rate)
+    .execute(pool)
+    .await?;
+
+    // Keep only latest per pair — delete older entries
+    sqlx::query(
+        "DELETE FROM exchange_rates WHERE base = ? AND currency = ? AND id NOT IN (
+            SELECT id FROM exchange_rates WHERE base = ? AND currency = ? ORDER BY id DESC LIMIT 1
+        )",
+    )
+    .bind(base)
+    .bind(currency)
+    .bind(base)
+    .bind(currency)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn get_latest_rates(pool: &SqlitePool, base: &str) -> Result<Vec<ExchangeRate>> {
+    let rates = sqlx::query_as::<_, ExchangeRate>(
+        "SELECT e.* FROM exchange_rates e
+         INNER JOIN (
+             SELECT base, currency, MAX(id) as max_id
+             FROM exchange_rates WHERE base = ? GROUP BY base, currency
+         ) latest ON e.id = latest.max_id",
+    )
+    .bind(base)
+    .fetch_all(pool)
+    .await?;
+    Ok(rates)
 }

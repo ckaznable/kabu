@@ -8,6 +8,7 @@ pub struct Stock {
     pub name: Option<String>,
     pub quantity: f64,
     pub cost_basis: f64,
+    pub asset_type: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -18,6 +19,12 @@ pub struct CreateStock {
     pub name: Option<String>,
     pub quantity: f64,
     pub cost_basis: f64,
+    #[serde(default = "default_asset_type")]
+    pub asset_type: String,
+}
+
+fn default_asset_type() -> String {
+    "stock".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -71,4 +78,13 @@ pub struct HoldingSummary {
     pub current_value: f64,
     pub gain_loss: f64,
     pub gain_loss_percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
+pub struct ExchangeRate {
+    pub id: i64,
+    pub base: String,
+    pub currency: String,
+    pub rate: f64,
+    pub timestamp: String,
 }

@@ -28,16 +28,30 @@ pub async fn create(
     State(state): State<AppState>,
     Json(input): Json<CreateStock>,
 ) -> Result<(StatusCode, Json<Stock>), StatusCode> {
-    db::create_stock(
+    let symbol = input.symbol.to_uppercase();
+    let stock = db::create_stock(
         &state.db,
-        &input.symbol,
+        &symbol,
         input.name.as_deref(),
         input.quantity,
         input.cost_basis,
+        &input.asset_type,
     )
     .await
-    .map(|s| (StatusCode::CREATED, Json(s)))
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Seed initial price from avg cost if no price record exists
+    if input.quantity > 0.0 && input.cost_basis > 0.0 {
+        let existing = db::get_latest_price(&state.db, &symbol)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if existing.is_none() {
+            let avg = input.cost_basis / input.quantity;
+            let _ = db::insert_price(&state.db, &symbol, avg, None, None, None, None, None, None).await;
+        }
+    }
+
+    Ok((StatusCode::CREATED, Json(stock)))
 }
 
 pub async fn update(

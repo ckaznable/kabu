@@ -44,6 +44,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/portfolio/summary", get(routes::portfolio::summary))
         .route("/api/pdf/upload", post(routes::pdf::upload))
         .route("/api/transactions", get(routes::transactions::list))
+        .route("/api/prices/{symbol}", get(routes::prices::history))
+        .route("/api/exchange-rates", get(routes::exchange_rates::list))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

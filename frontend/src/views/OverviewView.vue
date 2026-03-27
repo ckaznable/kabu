@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { fetchPortfolio, type PortfolioSummary } from '../api'
+import { fetchPortfolio, fetchExchangeRates, type PortfolioSummary, type ExchangeRate } from '../api'
+import AllocationChart from '../components/AllocationChart.vue'
+import GainLossChart from '../components/GainLossChart.vue'
+import PerformanceChart from '../components/PerformanceChart.vue'
+import AssetTypeChart from '../components/AssetTypeChart.vue'
 
 const portfolio = ref<PortfolioSummary | null>(null)
+const rates = ref<ExchangeRate[]>([])
 const loading = ref(true)
 const error = ref('')
 
@@ -10,7 +15,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    portfolio.value = await fetchPortfolio()
+    const [p, r] = await Promise.all([fetchPortfolio(), fetchExchangeRates()])
+    portfolio.value = p
+    rates.value = r
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to load'
   } finally {
@@ -19,6 +26,21 @@ async function load() {
 }
 
 onMounted(load)
+
+const rateMap = computed(() => {
+  const map: Record<string, number> = {}
+  for (const r of rates.value) map[r.currency] = r.rate
+  return map
+})
+
+const displayCurrency = ref(localStorage.getItem('kabu-display-currency') || 'USD')
+const displayRate = computed(() => {
+  if (displayCurrency.value === 'USD') return 1
+  return rateMap.value[displayCurrency.value] ?? 1
+})
+const displaySymbol = computed(() => displayCurrency.value === 'USD' ? '$' : displayCurrency.value + ' ')
+
+const fmtDisplay = (usd: number) => fmt(usd * displayRate.value)
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtPct = (n: number) => n.toFixed(2)
@@ -44,18 +66,41 @@ const hasData = computed(() => portfolio.value && portfolio.value.holdings.lengt
       <div class="summary-cards">
         <div class="card">
           <div class="card-label">Total Value</div>
-          <div class="card-value">${{ fmt(portfolio.total_value) }}</div>
+          <div class="card-value">{{ displaySymbol }}{{ fmtDisplay(portfolio.total_value) }}</div>
         </div>
         <div class="card">
           <div class="card-label">Total Cost</div>
-          <div class="card-value">${{ fmt(portfolio.total_cost) }}</div>
+          <div class="card-value">{{ displaySymbol }}{{ fmtDisplay(portfolio.total_cost) }}</div>
         </div>
         <div class="card">
           <div class="card-label">Gain / Loss</div>
           <div class="card-value" :class="cls(portfolio.total_gain_loss)">
-            ${{ fmt(portfolio.total_gain_loss) }}
+            {{ displaySymbol }}{{ fmtDisplay(portfolio.total_gain_loss) }}
             <span class="pct">({{ fmtPct(portfolio.total_gain_loss_percent) }}%)</span>
           </div>
+        </div>
+      </div>
+
+      <div v-if="displayCurrency !== 'USD' && displayRate > 1" class="rate-note">
+        1 USD = {{ displayRate.toFixed(2) }} {{ displayCurrency }}
+      </div>
+
+      <div class="charts-row">
+        <div class="chart-card">
+          <h3>Allocation</h3>
+          <AllocationChart :holdings="portfolio.holdings" />
+        </div>
+        <div class="chart-card">
+          <h3>Gain / Loss ($)</h3>
+          <GainLossChart :holdings="portfolio.holdings" />
+        </div>
+        <div class="chart-card">
+          <h3>Return (%)</h3>
+          <PerformanceChart :holdings="portfolio.holdings" />
+        </div>
+        <div class="chart-card">
+          <h3>Stock / Crypto</h3>
+          <AssetTypeChart :holdings="portfolio.holdings" />
         </div>
       </div>
 
@@ -64,6 +109,7 @@ const hasData = computed(() => portfolio.value && portfolio.value.holdings.lengt
           <tr>
             <th>Symbol</th>
             <th>Name</th>
+            <th>Type</th>
             <th class="num">Qty</th>
             <th class="num">Avg Cost</th>
             <th class="num">Price</th>
@@ -76,13 +122,14 @@ const hasData = computed(() => portfolio.value && portfolio.value.holdings.lengt
           <tr v-for="h in portfolio.holdings" :key="h.stock.id">
             <td class="symbol">{{ h.stock.symbol }}</td>
             <td>{{ h.stock.name || '-' }}</td>
+            <td><span class="type-badge" :class="h.stock.asset_type">{{ h.stock.asset_type }}</span></td>
             <td class="num">{{ h.stock.quantity }}</td>
             <td class="num">
-              ${{ h.stock.quantity > 0 ? fmt(h.stock.cost_basis / h.stock.quantity) : '0.00' }}
+              {{ displaySymbol }}{{ h.stock.quantity > 0 ? fmtDisplay(h.stock.cost_basis / h.stock.quantity) : '0.00' }}
             </td>
-            <td class="num">{{ h.latest_price != null ? '$' + fmt(h.latest_price) : '-' }}</td>
-            <td class="num">${{ fmt(h.current_value) }}</td>
-            <td class="num" :class="cls(h.gain_loss)">${{ fmt(h.gain_loss) }}</td>
+            <td class="num">{{ h.latest_price != null ? displaySymbol + fmtDisplay(h.latest_price) : '-' }}</td>
+            <td class="num">{{ displaySymbol }}{{ fmtDisplay(h.current_value) }}</td>
+            <td class="num" :class="cls(h.gain_loss)">{{ displaySymbol }}{{ fmtDisplay(h.gain_loss) }}</td>
             <td class="num" :class="cls(h.gain_loss_percent)">{{ fmtPct(h.gain_loss_percent) }}%</td>
           </tr>
         </tbody>
@@ -144,9 +191,58 @@ h1 {
   font-weight: 400;
 }
 
+.charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.chart-card h3 {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
 .symbol {
   font-weight: 600;
   color: var(--accent);
+}
+
+.type-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.type-badge.stock {
+  background: #1e3a5f;
+  color: #6c8aff;
+}
+
+.type-badge.crypto {
+  background: #1a3d2e;
+  color: #34d399;
+}
+
+.converted-cards {
+  margin-bottom: 1.5rem;
+}
+
+.card-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
 }
 
 .positive { color: var(--green); }

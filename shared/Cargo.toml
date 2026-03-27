@@ -10,3 +10,4 @@ serde_json = "1"
 anyhow = "1"
 toml = "0.8"
 specta = { version = "1", features = ["typescript"] }
+dirs = "6"
