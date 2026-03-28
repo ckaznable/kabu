@@ -72,6 +72,29 @@ const fmtDateTime = (s: string | null) => {
 
 const hasData = computed(() => portfolio.value && portfolio.value.holdings.length > 0)
 const recentTransactions = computed(() => transactions.value.slice(0, 20))
+
+type GainLossFilter = 'all' | 'stock' | 'crypto'
+const gainLossFilter = ref<GainLossFilter>('all')
+
+const filteredGainLossHoldings = computed(() => {
+  const holdings = portfolio.value?.holdings ?? []
+  if (gainLossFilter.value === 'all') return holdings
+  return holdings.filter((h) => h.stock.asset_type.toLowerCase() === gainLossFilter.value)
+})
+
+const gainLossSummary = computed(() => {
+  const totalCost = filteredGainLossHoldings.value.reduce((sum, h) => sum + h.stock.cost_basis, 0)
+  const totalValue = filteredGainLossHoldings.value.reduce((sum, h) => sum + h.current_value, 0)
+  const totalGainLoss = totalValue - totalCost
+  const totalGainLossPercent = totalCost > 0 ? (totalGainLoss / totalCost) * 100 : 0
+  return { totalGainLoss, totalGainLossPercent }
+})
+
+const gainLossFilterLabel = computed(() => {
+  if (gainLossFilter.value === 'stock') return 'Stock'
+  if (gainLossFilter.value === 'crypto') return 'Crypto'
+  return 'Stock + Crypto'
+})
 </script>
 
 <template>
@@ -97,10 +120,11 @@ const recentTransactions = computed(() => transactions.value.slice(0, 20))
           </div>
           <div class="card">
             <div class="card-label">Gain / Loss</div>
-            <div class="card-value" :class="cls(portfolio.total_gain_loss)">
-              {{ displaySymbol }}{{ fmtDisplay(portfolio.total_gain_loss) }}
-              <span class="pct">({{ fmtPct(portfolio.total_gain_loss_percent) }}%)</span>
+            <div class="card-value" :class="cls(gainLossSummary.totalGainLoss)">
+              {{ displaySymbol }}{{ fmtDisplay(gainLossSummary.totalGainLoss) }}
+              <span class="pct">({{ fmtPct(gainLossSummary.totalGainLossPercent) }}%)</span>
             </div>
+            <div class="card-sub">View: {{ gainLossFilterLabel }}</div>
           </div>
         </div>
 
@@ -118,8 +142,15 @@ const recentTransactions = computed(() => transactions.value.slice(0, 20))
             <AllocationChart :holdings="portfolio.holdings" />
           </div>
           <div class="chart-card">
-            <h3>Gain / Loss ($)</h3>
-            <GainLossChart :holdings="portfolio.holdings" />
+            <div class="chart-head">
+              <h3>Gain / Loss ($)</h3>
+              <div class="toggle-group">
+                <button class="toggle-btn" :class="{ active: gainLossFilter === 'all' }" @click="gainLossFilter = 'all'">Stock + Crypto</button>
+                <button class="toggle-btn" :class="{ active: gainLossFilter === 'stock' }" @click="gainLossFilter = 'stock'">Stock</button>
+                <button class="toggle-btn" :class="{ active: gainLossFilter === 'crypto' }" @click="gainLossFilter = 'crypto'">Crypto</button>
+              </div>
+            </div>
+            <GainLossChart :holdings="filteredGainLossHoldings" />
           </div>
           <div class="chart-card">
             <h3>Return (%)</h3>
@@ -283,6 +314,52 @@ h1 {
   font-weight: 500;
   color: var(--text-muted);
   margin-bottom: 0.75rem;
+}
+
+.chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.chart-head h3 {
+  margin-bottom: 0;
+}
+
+.toggle-group {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.toggle-btn {
+  border: none;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.toggle-btn:last-child {
+  border-right: none;
+}
+
+.toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .chart-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 .history-card {
