@@ -39,12 +39,28 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Exchange rates
+    let exchange_rate_key = config.exchange_rate.resolve_api_key()?;
     exchange_rate::update_exchange_rates(
         &pool,
+        &exchange_rate_key,
         &config.exchange_rate.base,
         &config.exchange_rate.currencies,
     )
     .await?;
+
+    let summary = db::compute_portfolio_summary(&pool).await?;
+    db::insert_portfolio_snapshot(
+        &pool,
+        summary.total_cost,
+        summary.total_value,
+        summary.total_gain_loss,
+    )
+    .await?;
+    tracing::info!(
+        "Portfolio snapshot saved: value={:.2}, cost={:.2}",
+        summary.total_value,
+        summary.total_cost
+    );
 
     tracing::info!("Done");
     Ok(())

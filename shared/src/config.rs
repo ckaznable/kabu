@@ -101,6 +101,10 @@ fn default_target_currencies() -> Vec<String> {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExchangeRateConfig {
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
     #[serde(default = "default_base_currency")]
     pub base: String,
     #[serde(default = "default_target_currencies")]
@@ -110,9 +114,17 @@ pub struct ExchangeRateConfig {
 impl Default for ExchangeRateConfig {
     fn default() -> Self {
         Self {
+            api_key: None,
+            api_key_env: None,
             base: default_base_currency(),
             currencies: default_target_currencies(),
         }
+    }
+}
+
+impl ExchangeRateConfig {
+    pub fn resolve_api_key(&self) -> Result<String> {
+        resolve_key(&self.api_key, &self.api_key_env, "exchange_rate")
     }
 }
 

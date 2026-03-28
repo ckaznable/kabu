@@ -33,6 +33,10 @@ cp config.example.toml config.toml
 | `gemini`   | `api_key`       | Gemini API key (direct value)                       |
 | `gemini`   | `api_key_env`   | Or: env var name to read Gemini key from            |
 | `gemini`   | `model`         | Gemini model name (default: `gemini-2.5-flash-lite`)|
+| `exchange_rate` | `api_key`   | ExchangeRate-API key (direct value)                 |
+| `exchange_rate` | `api_key_env` | Or: env var name for ExchangeRate-API key         |
+| `exchange_rate` | `base`      | Base currency code (default: `USD`)                 |
+| `exchange_rate` | `currencies`| Target currency codes to store                       |
 | `pdf`      | `password`      | PDF decryption password (direct value)              |
 | `pdf`      | `password_env`  | Or: env var name to read PDF password from          |
 
@@ -46,6 +50,7 @@ Config file path can be overridden with the `KABU_CONFIG` env var.
 
 - **Finnhub** — Get a free key at https://finnhub.io/
 - **Gemini** — Get a key at https://aistudio.google.com/apikey
+- **ExchangeRate-API** — Get a key at https://www.exchangerate-api.com/
 
 ## Development
 

@@ -14,7 +14,9 @@ api_key_env = "GEMINI_API_KEY"
 model = "gemini-2.5-flash-lite"
 
 [exchange_rate]
-# Frankfurter API (ECB data, no key required)
+# exchangerate-api.com
+api_key = ""
+api_key_env = "EXCHANGE_RATE_API_KEY"
 base = "USD"
 currencies = ["TWD", "JPY", "EUR"]
 
