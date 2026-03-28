@@ -28,14 +28,59 @@ pub async fn create(
     State(state): State<AppState>,
     Json(input): Json<CreateStock>,
 ) -> Result<(StatusCode, Json<Stock>), StatusCode> {
+    if input.quantity == 0.0 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let symbol = input.symbol.to_uppercase();
-    let stock = db::create_stock(
+    let (status, stock) = if let Some(existing) = db::get_stock_by_symbol(&state.db, &symbol)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        if existing.asset_type != input.asset_type {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        let merged_qty = existing.quantity + input.quantity;
+        let merged_cost = existing.cost_basis + input.cost_basis;
+        let merged = db::update_stock(
+            &state.db,
+            existing.id,
+            input.name.as_deref(),
+            merged_qty,
+            merged_cost,
+        )
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        (StatusCode::OK, merged)
+    } else {
+        let created = db::create_stock(
+            &state.db,
+            &symbol,
+            input.name.as_deref(),
+            input.quantity,
+            input.cost_basis,
+            &input.asset_type,
+        )
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        (StatusCode::CREATED, created)
+    };
+
+    // Always keep a history entry for manual add action.
+    let transaction_type = if input.quantity < 0.0 { "SELL" } else { "BUY" };
+    let tx_qty = input.quantity.abs();
+    let tx_total = input.cost_basis.abs();
+    let unit_price = if tx_qty > 0.0 { tx_total / tx_qty } else { 0.0 };
+    db::insert_transaction(
         &state.db,
         &symbol,
-        input.name.as_deref(),
-        input.quantity,
-        input.cost_basis,
-        &input.asset_type,
+        transaction_type,
+        tx_qty,
+        unit_price,
+        tx_total,
+        None,
+        Some("manual"),
+        None,
     )
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -51,7 +96,7 @@ pub async fn create(
         }
     }
 
-    Ok((StatusCode::CREATED, Json(stock)))
+    Ok((status, Json(stock)))
 }
 
 pub async fn update(

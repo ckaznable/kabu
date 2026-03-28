@@ -1,9 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { fetchStocks, fetchExchangeRates, createStock, updateStock, deleteStock, type Stock, type ExchangeRate } from '../api'
+import {
+  fetchStocks,
+  fetchExchangeRates,
+  fetchTransactions,
+  createStock,
+  updateStock,
+  deleteStock,
+  type Stock,
+  type ExchangeRate,
+  type Transaction,
+} from '../api'
 
 const stocks = ref<Stock[]>([])
 const rates = ref<ExchangeRate[]>([])
+const transactions = ref<Transaction[]>([])
 const loading = ref(true)
 const displayCurrency = ref(localStorage.getItem('kabu-display-currency') || 'USD')
 
@@ -13,6 +24,7 @@ const newQty = ref<number>(0)
 const newCost = ref<number>(0)
 const newAvgCost = ref<number>(0)
 const newType = ref('stock')
+const newAction = ref<'BUY' | 'SELL'>('BUY')
 
 const editingId = ref<number | null>(null)
 const editQty = ref<number>(0)
@@ -23,9 +35,10 @@ const editName = ref('')
 async function load() {
   loading.value = true
   try {
-    const [s, r] = await Promise.all([fetchStocks(), fetchExchangeRates()])
+    const [s, r, t] = await Promise.all([fetchStocks(), fetchExchangeRates(), fetchTransactions()])
     stocks.value = s
     rates.value = r
+    transactions.value = t
   } finally {
     loading.value = false
   }
@@ -60,11 +73,15 @@ function onEditQtyInput() {
 async function handleAdd() {
   const symbol = newSymbol.value.trim().toUpperCase()
   if (!symbol) return
+  const qty = Math.abs(newQty.value)
+  const cost = Math.abs(newCost.value)
+  if (qty <= 0) return
+  const sign = newAction.value === 'SELL' ? -1 : 1
   await createStock({
     symbol,
     name: newName.value.trim() || undefined,
-    quantity: newQty.value,
-    cost_basis: newCost.value,
+    quantity: qty * sign,
+    cost_basis: cost * sign,
     asset_type: newType.value,
   })
   newSymbol.value = ''
@@ -73,6 +90,7 @@ async function handleAdd() {
   newCost.value = 0
   newAvgCost.value = 0
   newType.value = 'stock'
+  newAction.value = 'BUY'
   await load()
 }
 
@@ -111,9 +129,15 @@ function onCurrencyChange() {
 const availableCurrencies = computed(() =>
   ['USD', ...rates.value.map(r => r.currency)]
 )
+const recentTransactions = computed(() => transactions.value.slice(0, 20))
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtDateTime = (s: string | null) => {
+  if (!s) return '-'
+  const d = new Date(s.replace(' ', 'T') + 'Z')
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleString('en-US')
+}
 </script>
 
 <template>
@@ -140,6 +164,13 @@ const fmt = (n: number) =>
         <h2>Add Stock</h2>
         <form class="add-form" @submit.prevent="handleAdd">
           <label class="form-field">
+            <span class="form-label">Action</span>
+            <select v-model="newAction" class="select-input">
+              <option value="BUY">Buy</option>
+              <option value="SELL">Sell</option>
+            </select>
+          </label>
+          <label class="form-field">
             <span class="form-label">Type</span>
             <select v-model="newType" class="select-input">
               <option value="stock">Stock</option>
@@ -159,7 +190,7 @@ const fmt = (n: number) =>
             <input v-model.number="newQty" type="number" step="any" @input="onNewQtyInput" />
           </label>
           <label class="form-field">
-            <span class="form-label">Total Cost</span>
+            <span class="form-label">{{ newAction === 'SELL' ? 'Total Amount' : 'Total Cost' }}</span>
             <input v-model.number="newCost" type="number" step="any" @input="onNewTotalInput" />
           </label>
           <label class="form-field">
@@ -171,7 +202,7 @@ const fmt = (n: number) =>
       </section>
 
       <section class="section">
-        <h2>Holdings</h2>
+        <h2>Holdings (Merged)</h2>
         <div v-if="stocks.length === 0" class="status">No stocks added yet.</div>
         <table v-else class="data-table">
           <thead>
@@ -211,6 +242,35 @@ const fmt = (n: number) =>
                   <button class="btn btn-sm btn-danger" @click="handleDelete(s.id)">Delete</button>
                 </td>
               </template>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>Transaction History</h2>
+        <div v-if="recentTransactions.length === 0" class="status">No transaction history yet.</div>
+        <table v-else class="data-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Symbol</th>
+              <th>Type</th>
+              <th class="num">Quantity</th>
+              <th class="num">Price</th>
+              <th class="num">Total</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tx in recentTransactions" :key="tx.id">
+              <td>{{ fmtDateTime(tx.transaction_date || tx.created_at) }}</td>
+              <td class="symbol">{{ tx.symbol }}</td>
+              <td>{{ tx.transaction_type }}</td>
+              <td class="num">{{ tx.quantity }}</td>
+              <td class="num">${{ fmt(tx.price) }}</td>
+              <td class="num">${{ fmt(tx.total_amount) }}</td>
+              <td>{{ tx.source || '-' }}</td>
             </tr>
           </tbody>
         </table>
