@@ -16,3 +16,5 @@ export type HoldingSummary = { stock: Stock; latest_price: number | null; curren
 
 export type ExchangeRate = { id: number; base: string; currency: string; rate: number; timestamp: string }
 
+export type PortfolioSnapshot = { id: number; total_cost: number; total_value: number; total_gain_loss: number; timestamp: string }
+

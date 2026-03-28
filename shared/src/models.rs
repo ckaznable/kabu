@@ -88,3 +88,12 @@ pub struct ExchangeRate {
     pub rate: f64,
     pub timestamp: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
+pub struct PortfolioSnapshot {
+    pub id: i64,
+    pub total_cost: f64,
+    pub total_value: f64,
+    pub total_gain_loss: f64,
+    pub timestamp: String,
+}

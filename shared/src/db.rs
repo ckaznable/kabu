@@ -3,7 +3,9 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::str::FromStr;
 
-use crate::models::{ExchangeRate, Price, Stock, Transaction};
+use crate::models::{
+    ExchangeRate, HoldingSummary, PortfolioSnapshot, PortfolioSummary, Price, Stock, Transaction,
+};
 
 pub async fn init_pool(database_url: &str) -> Result<SqlitePool> {
     let options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
@@ -169,6 +171,52 @@ pub async fn get_price_history(
     Ok(prices)
 }
 
+pub async fn compute_portfolio_summary(pool: &SqlitePool) -> Result<PortfolioSummary> {
+    let stocks = list_stocks(pool).await?;
+
+    let mut holdings = Vec::new();
+    let mut total_cost = 0.0;
+    let mut total_value = 0.0;
+
+    for stock in stocks {
+        let latest_price = get_latest_price(pool, &stock.symbol).await?;
+        let price = latest_price.as_ref().map(|p| p.price);
+        let current_value = price.unwrap_or(0.0) * stock.quantity;
+        let gain_loss = current_value - stock.cost_basis;
+        let gain_loss_percent = if stock.cost_basis > 0.0 {
+            (gain_loss / stock.cost_basis) * 100.0
+        } else {
+            0.0
+        };
+
+        total_cost += stock.cost_basis;
+        total_value += current_value;
+
+        holdings.push(HoldingSummary {
+            stock,
+            latest_price: price,
+            current_value,
+            gain_loss,
+            gain_loss_percent,
+        });
+    }
+
+    let total_gain_loss = total_value - total_cost;
+    let total_gain_loss_percent = if total_cost > 0.0 {
+        (total_gain_loss / total_cost) * 100.0
+    } else {
+        0.0
+    };
+
+    Ok(PortfolioSummary {
+        total_cost,
+        total_value,
+        total_gain_loss,
+        total_gain_loss_percent,
+        holdings,
+    })
+}
+
 // --- Transactions ---
 
 pub async fn insert_transaction(
@@ -267,6 +315,65 @@ pub async fn list_stocks_by_type(pool: &SqlitePool) -> Result<Vec<(String, Strin
         sqlx::query_as("SELECT symbol, asset_type FROM stocks ORDER BY symbol")
             .fetch_all(pool)
             .await?;
+    Ok(rows)
+}
+
+pub async fn insert_portfolio_snapshot(
+    pool: &SqlitePool,
+    total_cost: f64,
+    total_value: f64,
+    total_gain_loss: f64,
+) -> Result<()> {
+    let updated = sqlx::query(
+        "UPDATE portfolio_snapshots
+         SET total_cost = ?, total_value = ?, total_gain_loss = ?, timestamp = datetime('now')
+         WHERE id = (
+            SELECT id FROM portfolio_snapshots
+            WHERE date(timestamp) = date('now')
+            ORDER BY id DESC
+            LIMIT 1
+         )",
+    )
+    .bind(total_cost)
+    .bind(total_value)
+    .bind(total_gain_loss)
+    .execute(pool)
+    .await?;
+
+    if updated.rows_affected() == 0 {
+        sqlx::query(
+            "INSERT INTO portfolio_snapshots (total_cost, total_value, total_gain_loss) VALUES (?, ?, ?)",
+        )
+        .bind(total_cost)
+        .bind(total_value)
+        .bind(total_gain_loss)
+        .execute(pool)
+        .await?;
+    }
+
+    // Keep only one row per day (the latest one for today).
+    sqlx::query(
+        "DELETE FROM portfolio_snapshots
+         WHERE date(timestamp) = date('now')
+           AND id NOT IN (
+             SELECT id FROM portfolio_snapshots
+             WHERE date(timestamp) = date('now')
+             ORDER BY id DESC
+             LIMIT 1
+           )",
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn list_portfolio_snapshots(pool: &SqlitePool) -> Result<Vec<PortfolioSnapshot>> {
+    let rows = sqlx::query_as::<_, PortfolioSnapshot>(
+        "SELECT * FROM portfolio_snapshots ORDER BY id ASC",
+    )
+    .fetch_all(pool)
+    .await?;
     Ok(rows)
 }
 

@@ -30,6 +30,14 @@ CREATE TABLE IF NOT EXISTS exchange_rates (
     timestamp TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    total_cost REAL NOT NULL,
+    total_value REAL NOT NULL,
+    total_gain_loss REAL NOT NULL,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT NOT NULL,

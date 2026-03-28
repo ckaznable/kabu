@@ -6,14 +6,28 @@ export type {
   ExchangeRate,
   Transaction,
   PortfolioSummary,
+  PortfolioSnapshot,
   HoldingSummary,
 } from './types'
 
-import type { Stock, Price, ExchangeRate, PortfolioSummary, Transaction } from './types'
+import type {
+  Stock,
+  Price,
+  ExchangeRate,
+  PortfolioSummary,
+  PortfolioSnapshot,
+  Transaction,
+} from './types'
 
 export async function fetchPortfolio(): Promise<PortfolioSummary> {
   const res = await fetch('/api/portfolio/summary')
   if (!res.ok) throw new Error('Failed to fetch portfolio')
+  return res.json()
+}
+
+export async function fetchPortfolioSnapshots(): Promise<PortfolioSnapshot[]> {
+  const res = await fetch('/api/portfolio/snapshots')
+  if (!res.ok) throw new Error('Failed to fetch portfolio snapshots')
   return res.json()
 }
 

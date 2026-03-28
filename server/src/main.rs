@@ -1,9 +1,10 @@
-use axum::routing::{get, post};
+use axum::http::StatusCode;
+use axum::routing::{any, get, post};
 use axum::Router;
 use kabu_shared::config::Config;
 use sqlx::SqlitePool;
 use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 mod gemini;
 mod routes;
@@ -42,15 +43,19 @@ async fn main() -> anyhow::Result<()> {
                 .delete(routes::stocks::delete_one),
         )
         .route("/api/portfolio/summary", get(routes::portfolio::summary))
+        .route("/api/portfolio/snapshots", get(routes::portfolio::snapshots))
         .route("/api/pdf/upload", post(routes::pdf::upload))
         .route("/api/transactions", get(routes::transactions::list))
         .route("/api/prices/{symbol}", get(routes::prices::history))
         .route("/api/exchange-rates", get(routes::exchange_rates::list))
+        .route("/api/{*path}", any(|| async { StatusCode::NOT_FOUND }))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
     let app = Router::new().merge(api).fallback_service(
-        ServeDir::new("frontend/dist").append_index_html_on_directories(true),
+        ServeDir::new("frontend/dist")
+            .append_index_html_on_directories(true)
+            .not_found_service(ServeFile::new("frontend/dist/index.html")),
     );
 
     let addr = format!("0.0.0.0:{}", config.server.port);
