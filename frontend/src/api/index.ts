@@ -2,6 +2,7 @@ export type {
   Stock,
   CreateStock,
   UpdateStock,
+  UpdateTransaction,
   Price,
   ExchangeRate,
   Transaction,
@@ -17,6 +18,7 @@ import type {
   PortfolioSummary,
   PortfolioSnapshot,
   Transaction,
+  UpdateTransaction,
 } from './types'
 
 export async function fetchPortfolio(): Promise<PortfolioSummary> {
@@ -88,6 +90,30 @@ export async function fetchTransactions(): Promise<Transaction[]> {
   const res = await fetch('/api/transactions')
   if (!res.ok) throw new Error('Failed to fetch transactions')
   return res.json()
+}
+
+export async function updateTransaction(
+  id: number,
+  data: UpdateTransaction
+): Promise<Transaction> {
+  const res = await fetch(`/api/transactions/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to update transaction')
+  }
+  return res.json()
+}
+
+export async function deleteTransaction(id: number): Promise<void> {
+  const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to delete transaction')
+  }
 }
 
 export async function fetchExchangeRates(): Promise<ExchangeRate[]> {

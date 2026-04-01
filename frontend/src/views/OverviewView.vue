@@ -95,6 +95,14 @@ const gainLossFilterLabel = computed(() => {
   if (gainLossFilter.value === 'crypto') return 'Crypto'
   return 'Stock + Crypto'
 })
+
+const dividendTransactions = computed(() =>
+  transactions.value.filter(tx => tx.transaction_type === 'DIVIDEND')
+)
+const totalDividends = computed(() =>
+  dividendTransactions.value.reduce((sum, tx) => sum + tx.total_amount, 0)
+)
+const recentDividends = computed(() => dividendTransactions.value.slice(0, 5))
 </script>
 
 <template>
@@ -106,9 +114,12 @@ const gainLossFilterLabel = computed(() => {
 
     <div v-if="loading" class="status">Loading...</div>
     <div v-else-if="error" class="status error">{{ error }}</div>
+    <div v-else-if="!hasData && dividendTransactions.length === 0" class="status">
+      No stocks yet. Go to <RouterLink to="/settings">Settings</RouterLink> to add stocks.
+    </div>
 
     <template v-if="portfolio">
-      <template v-if="hasData">
+      <template v-if="hasData || dividendTransactions.length > 0">
         <div class="summary-cards">
           <div class="card">
             <div class="card-label">Total Value</div>
@@ -126,72 +137,103 @@ const gainLossFilterLabel = computed(() => {
             </div>
             <div class="card-sub">View: {{ gainLossFilterLabel }}</div>
           </div>
+          <div class="card">
+            <div class="card-label">Dividend Income</div>
+            <div class="card-value positive">{{ displaySymbol }}{{ fmtDisplay(totalDividends) }}</div>
+          </div>
         </div>
 
-        <div v-if="displayCurrency !== 'USD' && displayRate > 1" class="rate-note">
-          1 USD = {{ displayRate.toFixed(2) }} {{ displayCurrency }}
-        </div>
+        <template v-if="hasData">
+          <div v-if="displayCurrency !== 'USD' && displayRate > 1" class="rate-note">
+            1 USD = {{ displayRate.toFixed(2) }} {{ displayCurrency }}
+          </div>
 
-        <div class="charts-row">
-          <div class="chart-card chart-span-2">
-            <h3>Portfolio Value Trend</h3>
-            <PortfolioTrendChart :snapshots="snapshots" />
-          </div>
-          <div class="chart-card">
-            <h3>Allocation</h3>
-            <AllocationChart :holdings="portfolio.holdings" />
-          </div>
-          <div class="chart-card">
-            <div class="chart-head">
-              <h3>Gain / Loss ($)</h3>
-              <div class="toggle-group">
-                <button class="toggle-btn" :class="{ active: gainLossFilter === 'all' }" @click="gainLossFilter = 'all'">Stock + Crypto</button>
-                <button class="toggle-btn" :class="{ active: gainLossFilter === 'stock' }" @click="gainLossFilter = 'stock'">Stock</button>
-                <button class="toggle-btn" :class="{ active: gainLossFilter === 'crypto' }" @click="gainLossFilter = 'crypto'">Crypto</button>
-              </div>
+          <div class="charts-row">
+            <div class="chart-card chart-span-2">
+              <h3>Portfolio Value Trend</h3>
+              <PortfolioTrendChart :snapshots="snapshots" />
             </div>
-            <GainLossChart :holdings="filteredGainLossHoldings" />
+            <div class="chart-card">
+              <h3>Allocation</h3>
+              <AllocationChart :holdings="portfolio.holdings" />
+            </div>
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3>Gain / Loss ($)</h3>
+                <div class="toggle-group">
+                  <button class="toggle-btn" :class="{ active: gainLossFilter === 'all' }" @click="gainLossFilter = 'all'">Stock + Crypto</button>
+                  <button class="toggle-btn" :class="{ active: gainLossFilter === 'stock' }" @click="gainLossFilter = 'stock'">Stock</button>
+                  <button class="toggle-btn" :class="{ active: gainLossFilter === 'crypto' }" @click="gainLossFilter = 'crypto'">Crypto</button>
+                </div>
+              </div>
+              <GainLossChart :holdings="filteredGainLossHoldings" />
+            </div>
+            <div class="chart-card">
+              <h3>Return (%)</h3>
+              <PerformanceChart :holdings="portfolio.holdings" />
+            </div>
+            <div class="chart-card">
+              <h3>Stock / Crypto</h3>
+              <AssetTypeChart :holdings="portfolio.holdings" />
+            </div>
           </div>
-          <div class="chart-card">
-            <h3>Return (%)</h3>
-            <PerformanceChart :holdings="portfolio.holdings" />
-          </div>
-          <div class="chart-card">
-            <h3>Stock / Crypto</h3>
-            <AssetTypeChart :holdings="portfolio.holdings" />
-          </div>
-        </div>
 
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Name</th>
-              <th>Type</th>
-              <th class="num">Qty</th>
-              <th class="num">Avg Cost</th>
-              <th class="num">Price</th>
-              <th class="num">Value</th>
-              <th class="num">Gain/Loss</th>
-              <th class="num">%</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="h in portfolio.holdings" :key="h.stock.id">
-              <td class="symbol">{{ h.stock.symbol }}</td>
-              <td>{{ h.stock.name || '-' }}</td>
-              <td><span class="type-badge" :class="h.stock.asset_type">{{ h.stock.asset_type }}</span></td>
-              <td class="num">{{ h.stock.quantity }}</td>
-              <td class="num">
-                {{ displaySymbol }}{{ h.stock.quantity > 0 ? fmtDisplay(h.stock.cost_basis / h.stock.quantity) : '0.00' }}
-              </td>
-              <td class="num">{{ h.latest_price != null ? displaySymbol + fmtDisplay(h.latest_price) : '-' }}</td>
-              <td class="num">{{ displaySymbol }}{{ fmtDisplay(h.current_value) }}</td>
-              <td class="num" :class="cls(h.gain_loss)">{{ displaySymbol }}{{ fmtDisplay(h.gain_loss) }}</td>
-              <td class="num" :class="cls(h.gain_loss_percent)">{{ fmtPct(h.gain_loss_percent) }}%</td>
-            </tr>
-          </tbody>
-        </table>
+          <div v-if="recentDividends.length > 0" class="dividend-card">
+            <div class="section-head">
+              <h3>Recent Dividends</h3>
+              <RouterLink to="/settings" class="section-link">Manage Transactions</RouterLink>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Symbol</th>
+                  <th class="num">Amount</th>
+                  <th class="num">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="tx in recentDividends" :key="tx.id">
+                  <td>{{ tx.transaction_date || '-' }}</td>
+                  <td class="symbol">{{ tx.symbol }}</td>
+                  <td class="num positive">{{ displaySymbol }}{{ fmtDisplay(tx.total_amount) }}</td>
+                  <td class="num">{{ tx.price > 0 ? displaySymbol + fmtDisplay(tx.price) : '-' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th class="num">Qty</th>
+                <th class="num">Avg Cost</th>
+                <th class="num">Price</th>
+                <th class="num">Value</th>
+                <th class="num">Gain/Loss</th>
+                <th class="num">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="h in portfolio.holdings" :key="h.stock.id">
+                <td class="symbol">{{ h.stock.symbol }}</td>
+                <td>{{ h.stock.name || '-' }}</td>
+                <td><span class="type-badge" :class="h.stock.asset_type">{{ h.stock.asset_type }}</span></td>
+                <td class="num">{{ h.stock.quantity }}</td>
+                <td class="num">
+                  {{ displaySymbol }}{{ h.stock.quantity > 0 ? fmtDisplay(h.stock.cost_basis / h.stock.quantity) : '0.00' }}
+                </td>
+                <td class="num">{{ h.latest_price != null ? displaySymbol + fmtDisplay(h.latest_price) : '-' }}</td>
+                <td class="num">{{ displaySymbol }}{{ fmtDisplay(h.current_value) }}</td>
+                <td class="num" :class="cls(h.gain_loss)">{{ displaySymbol }}{{ fmtDisplay(h.gain_loss) }}</td>
+                <td class="num" :class="cls(h.gain_loss_percent)">{{ fmtPct(h.gain_loss_percent) }}%</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
       </template>
 
       <div v-else class="status">
@@ -222,7 +264,9 @@ const gainLossFilterLabel = computed(() => {
               <td>{{ tx.transaction_type }}</td>
               <td class="num">{{ tx.quantity }}</td>
               <td class="num">{{ displaySymbol }}{{ fmtDisplay(tx.price) }}</td>
-              <td class="num">{{ displaySymbol }}{{ fmtDisplay(tx.total_amount) }}</td>
+              <td class="num" :class="tx.transaction_type === 'DIVIDEND' ? 'positive' : ''">
+                {{ displaySymbol }}{{ fmtDisplay(tx.total_amount) }}
+              </td>
               <td>{{ tx.source || '-' }}</td>
             </tr>
           </tbody>
@@ -314,6 +358,33 @@ h1 {
   font-weight: 500;
   color: var(--text-muted);
   margin-bottom: 0.75rem;
+}
+
+.dividend-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.section-head h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.section-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.85rem;
 }
 
 .chart-head {

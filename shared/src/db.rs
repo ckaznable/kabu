@@ -251,13 +251,123 @@ pub async fn insert_transaction(
     Ok(tx)
 }
 
+pub async fn get_transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transaction>> {
+    let tx = sqlx::query_as::<_, Transaction>("SELECT * FROM transactions WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(tx)
+}
+
 pub async fn list_transactions(pool: &SqlitePool) -> Result<Vec<Transaction>> {
     let txs = sqlx::query_as::<_, Transaction>(
-        "SELECT * FROM transactions ORDER BY created_at DESC",
+        "SELECT * FROM transactions ORDER BY COALESCE(transaction_date, created_at) DESC, id DESC",
     )
     .fetch_all(pool)
     .await?;
     Ok(txs)
+}
+
+pub async fn update_transaction(
+    pool: &SqlitePool,
+    id: i64,
+    symbol: &str,
+    transaction_type: &str,
+    quantity: f64,
+    price: f64,
+    total_amount: f64,
+    transaction_date: Option<&str>,
+) -> Result<Option<Transaction>> {
+    let result = sqlx::query(
+        "UPDATE transactions
+         SET symbol = ?, transaction_type = ?, quantity = ?, price = ?, total_amount = ?, transaction_date = ?
+         WHERE id = ?",
+    )
+    .bind(symbol.to_uppercase())
+    .bind(transaction_type)
+    .bind(quantity)
+    .bind(price)
+    .bind(total_amount)
+    .bind(transaction_date)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Ok(None);
+    }
+
+    get_transaction(pool, id).await
+}
+
+pub async fn delete_transaction(pool: &SqlitePool, id: i64) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM transactions WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+async fn list_transactions_by_symbol(pool: &SqlitePool, symbol: &str) -> Result<Vec<Transaction>> {
+    let symbol = symbol.to_uppercase();
+    let txs = sqlx::query_as::<_, Transaction>(
+        "SELECT * FROM transactions
+         WHERE symbol = ?
+         ORDER BY COALESCE(transaction_date, created_at) ASC, id ASC",
+    )
+    .bind(symbol)
+    .fetch_all(pool)
+    .await?;
+    Ok(txs)
+}
+
+pub async fn rebuild_stock_from_transactions(pool: &SqlitePool, symbol: &str) -> Result<()> {
+    let symbol = symbol.to_uppercase();
+    let existing = get_stock_by_symbol(pool, &symbol).await?;
+    let transactions = list_transactions_by_symbol(pool, &symbol).await?;
+
+    let mut quantity = 0.0;
+    let mut cost_basis = 0.0;
+
+    for tx in transactions {
+        match tx.transaction_type.as_str() {
+            "BUY" => {
+                quantity += tx.quantity;
+                cost_basis += tx.total_amount;
+            }
+            "SELL" => {
+                if quantity <= 0.0 {
+                    continue;
+                }
+
+                let sell_quantity = tx.quantity.min(quantity);
+                let cost_ratio = sell_quantity / quantity;
+                let cost_reduction = cost_basis * cost_ratio;
+                quantity = (quantity - sell_quantity).max(0.0);
+                cost_basis = (cost_basis - cost_reduction).max(0.0);
+            }
+            _ => {}
+        }
+    }
+
+    match existing {
+        Some(stock) => {
+            sqlx::query(
+                "UPDATE stocks SET quantity = ?, cost_basis = ?, updated_at = datetime('now') WHERE id = ?",
+            )
+            .bind(quantity)
+            .bind(cost_basis)
+            .bind(stock.id)
+            .execute(pool)
+            .await?;
+        }
+        None if quantity > 0.0 || cost_basis > 0.0 => {
+            create_stock(pool, &symbol, None, quantity, cost_basis, "stock").await?;
+        }
+        None => {}
+    }
+
+    Ok(())
 }
 
 /// Upsert stock from a transaction: create if not exists, update quantity/cost on BUY/SELL.

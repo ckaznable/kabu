@@ -8,6 +8,7 @@ fn main() {
         ts::export::<Stock>(&config),
         ts::export::<CreateStock>(&config),
         ts::export::<UpdateStock>(&config),
+        ts::export::<UpdateTransaction>(&config),
         ts::export::<Price>(&config),
         ts::export::<Transaction>(&config),
         ts::export::<PortfolioSummary>(&config),

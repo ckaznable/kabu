@@ -6,6 +6,8 @@ export type CreateStock = { symbol: string; name: string | null; quantity: numbe
 
 export type UpdateStock = { name: string | null; quantity: number; cost_basis: number }
 
+export type UpdateTransaction = { symbol: string; transaction_type: string; quantity: number; price: number; total_amount: number; transaction_date: string | null }
+
 export type Price = { id: number; symbol: string; price: number; change: number | null; change_percent: number | null; high: number | null; low: number | null; open: number | null; previous_close: number | null; timestamp: string }
 
 export type Transaction = { id: number; symbol: string; transaction_type: string; quantity: number; price: number; total_amount: number; transaction_date: string | null; source: string | null; raw_text: string | null; created_at: string }

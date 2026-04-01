@@ -1,7 +1,9 @@
 use axum::extract::{Multipart, State};
 use axum::http::StatusCode;
+use std::collections::HashSet;
 
 use crate::gemini;
+use crate::transaction_service::normalize_transaction_input;
 use crate::AppState;
 use kabu_shared::db;
 
@@ -63,15 +65,32 @@ pub async fn upload(
         .await
         {
             Ok(extracted) => {
+                let mut affected_symbols = HashSet::new();
+
                 for tx in &extracted {
-                    if let Err(e) = db::insert_transaction(
-                        &state.db,
+                    let normalized = match normalize_transaction_input(
                         &tx.symbol,
                         &tx.transaction_type,
                         tx.quantity,
                         tx.price,
                         tx.total,
                         tx.date.as_deref(),
+                    ) {
+                        Ok(tx) => tx,
+                        Err(e) => {
+                            tracing::error!("Failed to normalize extracted transaction: {}", e);
+                            continue;
+                        }
+                    };
+
+                    if let Err(e) = db::insert_transaction(
+                        &state.db,
+                        &normalized.symbol,
+                        &normalized.transaction_type,
+                        normalized.quantity,
+                        normalized.price,
+                        normalized.total_amount,
+                        normalized.transaction_date.as_deref(),
                         Some("pdf"),
                         None,
                     )
@@ -80,18 +99,15 @@ pub async fn upload(
                         tracing::error!("Failed to insert transaction: {}", e);
                         continue;
                     }
-                    if let Err(e) = db::apply_transaction_to_stock(
-                        &state.db,
-                        &tx.symbol,
-                        &tx.transaction_type,
-                        tx.quantity,
-                        tx.total,
-                    )
-                    .await
-                    {
-                        tracing::error!("Failed to update stock for {}: {}", tx.symbol, e);
+                    affected_symbols.insert(normalized.symbol);
+                }
+
+                for symbol in affected_symbols {
+                    if let Err(e) = db::rebuild_stock_from_transactions(&state.db, &symbol).await {
+                        tracing::error!("Failed to rebuild stock for {}: {}", symbol, e);
                     }
                 }
+
                 tracing::info!("PDF processed: {} transactions extracted", extracted.len());
             }
             Err(e) => {

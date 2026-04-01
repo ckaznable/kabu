@@ -85,7 +85,8 @@ struct ExtractedResponse {
 
 const PROMPT: &str = "Extract all financial/stock transactions from this PDF document. \
     Identify each buy, sell, or dividend transaction with its stock symbol, \
-    quantity, price per share, total amount, and date if available.";
+    quantity, price per share, total amount, and date if available. \
+    Return quantity as an absolute share count, not a signed value.";
 
 fn build_response_schema() -> serde_json::Value {
     json!({

@@ -8,6 +8,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 mod gemini;
 mod routes;
+mod transaction_service;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -46,6 +47,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/portfolio/snapshots", get(routes::portfolio::snapshots))
         .route("/api/pdf/upload", post(routes::pdf::upload))
         .route("/api/transactions", get(routes::transactions::list))
+        .route(
+            "/api/transactions/{id}",
+            axum::routing::put(routes::transactions::update)
+                .delete(routes::transactions::delete_one),
+        )
         .route("/api/prices/{symbol}", get(routes::prices::history))
         .route("/api/exchange-rates", get(routes::exchange_rates::list))
         .route("/api/{*path}", any(|| async { StatusCode::NOT_FOUND }))

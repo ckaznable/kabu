@@ -6,15 +6,17 @@ import {
   fetchTransactions,
   createStock,
   updateStock,
+  updateTransaction,
   deleteStock,
+  deleteTransaction,
   type Stock,
   type ExchangeRate,
   type Transaction,
 } from '../api'
 
 const stocks = ref<Stock[]>([])
-const rates = ref<ExchangeRate[]>([])
 const transactions = ref<Transaction[]>([])
+const rates = ref<ExchangeRate[]>([])
 const loading = ref(true)
 const displayCurrency = ref(localStorage.getItem('kabu-display-currency') || 'USD')
 
@@ -32,6 +34,14 @@ const editCost = ref<number>(0)
 const editAvgCost = ref<number>(0)
 const editName = ref('')
 
+const editingTransactionId = ref<number | null>(null)
+const editTransactionSymbol = ref('')
+const editTransactionType = ref('BUY')
+const editTransactionQty = ref<number>(0)
+const editTransactionPrice = ref<number>(0)
+const editTransactionTotal = ref<number>(0)
+const editTransactionDate = ref('')
+
 async function load() {
   loading.value = true
   try {
@@ -46,7 +56,6 @@ async function load() {
 
 onMounted(load)
 
-// --- Add form sync ---
 function onNewTotalInput() {
   if (newQty.value > 0) newAvgCost.value = +(newCost.value / newQty.value).toFixed(4)
 }
@@ -58,7 +67,6 @@ function onNewQtyInput() {
   else if (newQty.value > 0) newAvgCost.value = +(newCost.value / newQty.value).toFixed(4)
 }
 
-// --- Edit form sync ---
 function onEditTotalInput() {
   if (editQty.value > 0) editAvgCost.value = +(editCost.value / editQty.value).toFixed(4)
 }
@@ -116,9 +124,42 @@ function cancelEdit() {
   editingId.value = null
 }
 
+function startTransactionEdit(tx: Transaction) {
+  editingTransactionId.value = tx.id
+  editTransactionSymbol.value = tx.symbol
+  editTransactionType.value = tx.transaction_type
+  editTransactionQty.value = tx.quantity
+  editTransactionPrice.value = tx.price
+  editTransactionTotal.value = tx.total_amount
+  editTransactionDate.value = tx.transaction_date || ''
+}
+
+async function saveTransactionEdit(id: number) {
+  await updateTransaction(id, {
+    symbol: editTransactionSymbol.value.trim().toUpperCase(),
+    transaction_type: editTransactionType.value,
+    quantity: editTransactionQty.value,
+    price: editTransactionPrice.value,
+    total_amount: editTransactionTotal.value,
+    transaction_date: editTransactionDate.value.trim() || null,
+  })
+  editingTransactionId.value = null
+  await load()
+}
+
+function cancelTransactionEdit() {
+  editingTransactionId.value = null
+}
+
 async function handleDelete(id: number) {
   if (!confirm('Remove this stock?')) return
   await deleteStock(id)
+  await load()
+}
+
+async function handleTransactionDelete(id: number) {
+  if (!confirm('Remove this transaction?')) return
+  await deleteTransaction(id)
   await load()
 }
 
@@ -129,15 +170,18 @@ function onCurrencyChange() {
 const availableCurrencies = computed(() =>
   ['USD', ...rates.value.map(r => r.currency)]
 )
-const recentTransactions = computed(() => transactions.value.slice(0, 20))
+const dividendTransactions = computed(() =>
+  transactions.value.filter(tx => tx.transaction_type === 'DIVIDEND')
+)
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const fmtDateTime = (s: string | null) => {
-  if (!s) return '-'
-  const d = new Date(s.replace(' ', 'T') + 'Z')
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleString('en-US')
-}
+
+const fmtQty = (n: number) =>
+  n.toLocaleString('en-US', {
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
+    maximumFractionDigits: Number.isInteger(n) ? 0 : 4,
+  })
 </script>
 
 <template>
@@ -232,7 +276,7 @@ const fmtDateTime = (s: string | null) => {
               </template>
               <template v-else>
                 <td>{{ s.name || '-' }}</td>
-                <td class="num">{{ s.quantity }}</td>
+                <td class="num">{{ fmtQty(s.quantity) }}</td>
                 <td class="num">${{ fmt(s.cost_basis) }}</td>
                 <td class="num">
                   ${{ s.quantity > 0 ? fmt(s.cost_basis / s.quantity) : '0.00' }}
@@ -248,29 +292,96 @@ const fmtDateTime = (s: string | null) => {
       </section>
 
       <section class="section">
-        <h2>Transaction History</h2>
-        <div v-if="recentTransactions.length === 0" class="status">No transaction history yet.</div>
+        <div class="section-head">
+          <div>
+            <h2>Dividend History</h2>
+            <p class="hint">Dedicated view for dividend transactions imported from PDF or edited manually.</p>
+          </div>
+        </div>
+        <div v-if="dividendTransactions.length === 0" class="status">No dividend records yet.</div>
         <table v-else class="data-table">
           <thead>
             <tr>
-              <th>Time</th>
+              <th>Date</th>
+              <th>Symbol</th>
+              <th class="num">Amount</th>
+              <th class="num">Price</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tx in dividendTransactions" :key="tx.id">
+              <td>{{ tx.transaction_date || '-' }}</td>
+              <td class="symbol">{{ tx.symbol }}</td>
+              <td class="num positive">${{ fmt(tx.total_amount) }}</td>
+              <td class="num">{{ tx.price > 0 ? '$' + fmt(tx.price) : '-' }}</td>
+              <td>{{ tx.source || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Transactions</h2>
+            <p class="hint">Edit or remove imported transaction history. Holdings will be recalculated after each change.</p>
+          </div>
+        </div>
+        <div v-if="transactions.length === 0" class="status">No transaction records yet.</div>
+        <table v-else class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
               <th>Symbol</th>
               <th>Type</th>
               <th class="num">Quantity</th>
               <th class="num">Price</th>
               <th class="num">Total</th>
               <th>Source</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="tx in recentTransactions" :key="tx.id">
-              <td>{{ fmtDateTime(tx.transaction_date || tx.created_at) }}</td>
-              <td class="symbol">{{ tx.symbol }}</td>
-              <td>{{ tx.transaction_type }}</td>
-              <td class="num">{{ tx.quantity }}</td>
-              <td class="num">${{ fmt(tx.price) }}</td>
-              <td class="num">${{ fmt(tx.total_amount) }}</td>
-              <td>{{ tx.source || '-' }}</td>
+            <tr v-for="tx in transactions" :key="tx.id">
+              <template v-if="editingTransactionId === tx.id">
+                <td><input v-model="editTransactionDate" type="date" class="edit-input" /></td>
+                <td><input v-model="editTransactionSymbol" class="edit-input" /></td>
+                <td>
+                  <select v-model="editTransactionType" class="edit-input edit-select">
+                    <option value="BUY">BUY</option>
+                    <option value="SELL">SELL</option>
+                    <option value="DIVIDEND">DIVIDEND</option>
+                  </select>
+                </td>
+                <td class="num"><input v-model.number="editTransactionQty" type="number" step="any" class="edit-input num-input" /></td>
+                <td class="num"><input v-model.number="editTransactionPrice" type="number" step="any" class="edit-input num-input" /></td>
+                <td class="num"><input v-model.number="editTransactionTotal" type="number" step="any" class="edit-input num-input" /></td>
+                <td>{{ tx.source || '-' }}</td>
+                <td class="actions">
+                  <button class="btn btn-sm" @click="saveTransactionEdit(tx.id)">Save</button>
+                  <button class="btn btn-sm btn-ghost" @click="cancelTransactionEdit">Cancel</button>
+                </td>
+              </template>
+              <template v-else>
+                <td>{{ tx.transaction_date || '-' }}</td>
+                <td class="symbol">{{ tx.symbol }}</td>
+                <td>
+                  <span class="type-badge" :class="tx.transaction_type.toLowerCase()">
+                    {{ tx.transaction_type }}
+                  </span>
+                </td>
+                <td class="num">{{ fmtQty(tx.quantity) }}</td>
+                <td class="num">${{ fmt(tx.price) }}</td>
+                <td class="num" :class="tx.transaction_type === 'DIVIDEND' ? 'positive' : ''">
+                  ${{ fmt(tx.total_amount) }}
+                </td>
+                <td>{{ tx.source || '-' }}</td>
+                <td class="actions">
+                  <button class="btn btn-sm" @click="startTransactionEdit(tx)">Edit</button>
+                  <button class="btn btn-sm btn-danger" @click="handleTransactionDelete(tx.id)">Delete</button>
+                </td>
+              </template>
             </tr>
           </tbody>
         </table>
@@ -294,6 +405,13 @@ h2 {
 
 .section {
   margin-bottom: 2rem;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
 }
 
 .status {
@@ -381,6 +499,21 @@ h2 {
   color: #34d399;
 }
 
+.type-badge.buy {
+  background: #163826;
+  color: #4ade80;
+}
+
+.type-badge.sell {
+  background: #4a1d1d;
+  color: #f87171;
+}
+
+.type-badge.dividend {
+  background: #3f3214;
+  color: #facc15;
+}
+
 .edit-input {
   padding: 0.3rem 0.5rem;
   background: var(--surface);
@@ -391,6 +524,10 @@ h2 {
   width: 100%;
 }
 
+.edit-select {
+  min-width: 110px;
+}
+
 .num-input {
   text-align: right;
 }
@@ -398,5 +535,9 @@ h2 {
 .actions {
   display: flex;
   gap: 0.25rem;
+}
+
+.positive {
+  color: var(--green);
 }
 </style>

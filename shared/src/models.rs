@@ -34,6 +34,16 @@ pub struct UpdateStock {
     pub cost_basis: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct UpdateTransaction {
+    pub symbol: String,
+    pub transaction_type: String,
+    pub quantity: f64,
+    pub price: f64,
+    pub total_amount: f64,
+    pub transaction_date: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
 pub struct Price {
     pub id: i64,
