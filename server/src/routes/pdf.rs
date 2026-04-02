@@ -33,6 +33,8 @@ pub async fn upload(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    tracing::info!("PDF upload request received");
+
     let mut pdf_bytes = None;
 
     while let Some(field) = multipart
