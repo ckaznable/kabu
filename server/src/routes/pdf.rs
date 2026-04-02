@@ -7,6 +7,15 @@ use crate::transaction_service::normalize_transaction_input;
 use crate::AppState;
 use kabu_shared::db;
 
+fn transaction_action_label(transaction_type: &str) -> &'static str {
+    match transaction_type {
+        "BUY" => "買入",
+        "SELL" => "賣出",
+        "DIVIDEND" => "股利",
+        _ => "交易",
+    }
+}
+
 fn decrypt_pdf_if_needed(
     pdf_bytes: &[u8],
     password: Option<&str>,
@@ -84,6 +93,16 @@ pub async fn upload(
                             continue;
                         }
                     };
+
+                    tracing::info!(
+                        action = transaction_action_label(&normalized.transaction_type),
+                        symbol = %normalized.symbol,
+                        quantity = normalized.quantity,
+                        price = normalized.price,
+                        total_amount = normalized.total_amount,
+                        date = ?normalized.transaction_date,
+                        "PDF transaction extracted"
+                    );
 
                     if let Err(e) = db::insert_transaction(
                         &state.db,
