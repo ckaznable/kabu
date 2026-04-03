@@ -85,6 +85,9 @@ pub struct PortfolioSummary {
 pub struct HoldingSummary {
     pub stock: Stock,
     pub latest_price: Option<f64>,
+    pub latest_change: Option<f64>,
+    pub latest_change_percent: Option<f64>,
+    pub latest_price_timestamp: Option<String>,
     pub current_value: f64,
     pub gain_loss: f64,
     pub gain_loss_percent: f64,

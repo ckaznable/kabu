@@ -14,7 +14,7 @@ export type Transaction = { id: number; symbol: string; transaction_type: string
 
 export type PortfolioSummary = { total_cost: number; total_value: number; total_gain_loss: number; total_gain_loss_percent: number; holdings: HoldingSummary[] }
 
-export type HoldingSummary = { stock: Stock; latest_price: number | null; current_value: number; gain_loss: number; gain_loss_percent: number }
+export type HoldingSummary = { stock: Stock; latest_price: number | null; latest_change: number | null; latest_change_percent: number | null; latest_price_timestamp: string | null; current_value: number; gain_loss: number; gain_loss_percent: number }
 
 export type ExchangeRate = { id: number; base: string; currency: string; rate: number; timestamp: string }
 

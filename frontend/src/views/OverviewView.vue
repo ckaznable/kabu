@@ -130,6 +130,27 @@ function sortIndicator(key: HoldingsSortKey) {
   if (holdingsSortKey.value !== key) return ''
   return holdingsSortDirection.value === 'desc' ? '▼' : '▲'
 }
+
+const latestTradingDate = computed(() => {
+  const timestamps = (portfolio.value?.holdings ?? [])
+    .map((h) => h.latest_price_timestamp?.slice(0, 10) ?? null)
+    .filter((value): value is string => value !== null)
+
+  if (timestamps.length === 0) return null
+  return timestamps.sort((a, b) => b.localeCompare(a))[0]
+})
+
+const topMovers = computed(() => {
+  if (!latestTradingDate.value) return []
+
+  return (portfolio.value?.holdings ?? [])
+    .filter((h) =>
+      h.latest_price_timestamp?.startsWith(latestTradingDate.value!) &&
+      h.latest_change_percent != null
+    )
+    .sort((a, b) => Math.abs(b.latest_change_percent ?? 0) - Math.abs(a.latest_change_percent ?? 0))
+    .slice(0, 10)
+})
 </script>
 
 <template>
@@ -225,6 +246,43 @@ function sortIndicator(key: HoldingsSortKey) {
                   <td class="symbol">{{ tx.symbol }}</td>
                   <td class="num positive">{{ displaySymbol }}{{ fmtDisplay(tx.total_amount) }}</td>
                   <td class="num">{{ tx.price > 0 ? displaySymbol + fmtDisplay(tx.price) : '-' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-if="topMovers.length > 0" class="dividend-card">
+            <div class="section-head">
+              <div>
+                <h3>Top 10 Movers</h3>
+                <div class="section-meta">Latest trading day: {{ latestTradingDate }}</div>
+              </div>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th class="num">Price</th>
+                  <th class="num">Change</th>
+                  <th class="num">Change %</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="h in topMovers" :key="`mover-${h.stock.id}`">
+                  <td class="symbol">{{ h.stock.symbol }}</td>
+                  <td>{{ h.stock.name || '-' }}</td>
+                  <td><span class="type-badge" :class="h.stock.asset_type">{{ h.stock.asset_type }}</span></td>
+                  <td class="num">{{ h.latest_price != null ? displaySymbol + fmtDisplay(h.latest_price) : '-' }}</td>
+                  <td class="num" :class="cls(h.latest_change ?? 0)">
+                    {{ h.latest_change != null ? displaySymbol + fmtDisplay(h.latest_change) : '-' }}
+                  </td>
+                  <td class="num" :class="cls(h.latest_change_percent ?? 0)">
+                    {{ h.latest_change_percent != null ? fmtPct(h.latest_change_percent) + '%' : '-' }}
+                  </td>
+                  <td>{{ fmtDateTime(h.latest_price_timestamp ?? null) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -420,6 +478,12 @@ h1 {
   color: var(--accent);
   text-decoration: none;
   font-size: 0.85rem;
+}
+
+.section-meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
 }
 
 .chart-head {

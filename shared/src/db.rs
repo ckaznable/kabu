@@ -173,14 +173,19 @@ pub async fn get_price_history(
 
 pub async fn compute_portfolio_summary(pool: &SqlitePool) -> Result<PortfolioSummary> {
     let stocks = list_stocks(pool).await?;
+    let latest_prices = get_all_latest_prices(pool).await?;
+    let latest_price_map = latest_prices
+        .into_iter()
+        .map(|price| (price.symbol.clone(), price))
+        .collect::<std::collections::HashMap<_, _>>();
 
     let mut holdings = Vec::new();
     let mut total_cost = 0.0;
     let mut total_value = 0.0;
 
     for stock in stocks {
-        let latest_price = get_latest_price(pool, &stock.symbol).await?;
-        let price = latest_price.as_ref().map(|p| p.price);
+        let latest_price = latest_price_map.get(&stock.symbol);
+        let price = latest_price.map(|p| p.price);
         let current_value = price.unwrap_or(0.0) * stock.quantity;
         let gain_loss = current_value - stock.cost_basis;
         let gain_loss_percent = if stock.cost_basis > 0.0 {
@@ -195,6 +200,9 @@ pub async fn compute_portfolio_summary(pool: &SqlitePool) -> Result<PortfolioSum
         holdings.push(HoldingSummary {
             stock,
             latest_price: price,
+            latest_change: latest_price.and_then(|p| p.change),
+            latest_change_percent: latest_price.and_then(|p| p.change_percent),
+            latest_price_timestamp: latest_price.map(|p| p.timestamp.clone()),
             current_value,
             gain_loss,
             gain_loss_percent,
