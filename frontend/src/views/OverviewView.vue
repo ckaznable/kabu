@@ -75,6 +75,10 @@ const recentTransactions = computed(() => transactions.value.slice(0, 20))
 
 type GainLossFilter = 'all' | 'stock' | 'crypto'
 const gainLossFilter = ref<GainLossFilter>('all')
+type HoldingsSortKey = 'gain_loss' | 'gain_loss_percent'
+type SortDirection = 'asc' | 'desc'
+const holdingsSortKey = ref<HoldingsSortKey | null>(null)
+const holdingsSortDirection = ref<SortDirection>('desc')
 
 const filteredGainLossHoldings = computed(() => {
   const holdings = portfolio.value?.holdings ?? []
@@ -103,6 +107,29 @@ const totalDividends = computed(() =>
   dividendTransactions.value.reduce((sum, tx) => sum + tx.total_amount, 0)
 )
 const recentDividends = computed(() => dividendTransactions.value.slice(0, 5))
+
+const sortedHoldings = computed(() => {
+  const holdings = portfolio.value?.holdings ?? []
+  if (!holdingsSortKey.value) return holdings
+
+  const direction = holdingsSortDirection.value === 'asc' ? 1 : -1
+  return [...holdings].sort((a, b) => (a[holdingsSortKey.value!] - b[holdingsSortKey.value!]) * direction)
+})
+
+function toggleHoldingsSort(key: HoldingsSortKey) {
+  if (holdingsSortKey.value === key) {
+    holdingsSortDirection.value = holdingsSortDirection.value === 'desc' ? 'asc' : 'desc'
+    return
+  }
+
+  holdingsSortKey.value = key
+  holdingsSortDirection.value = 'desc'
+}
+
+function sortIndicator(key: HoldingsSortKey) {
+  if (holdingsSortKey.value !== key) return ''
+  return holdingsSortDirection.value === 'desc' ? '▼' : '▲'
+}
 </script>
 
 <template>
@@ -213,12 +240,20 @@ const recentDividends = computed(() => dividendTransactions.value.slice(0, 5))
                 <th class="num">Avg Cost</th>
                 <th class="num">Price</th>
                 <th class="num">Value</th>
-                <th class="num">Gain/Loss</th>
-                <th class="num">%</th>
+                <th class="num">
+                  <button class="sort-btn" @click="toggleHoldingsSort('gain_loss')">
+                    Gain/Loss <span class="sort-indicator">{{ sortIndicator('gain_loss') }}</span>
+                  </button>
+                </th>
+                <th class="num">
+                  <button class="sort-btn" @click="toggleHoldingsSort('gain_loss_percent')">
+                    % <span class="sort-indicator">{{ sortIndicator('gain_loss_percent') }}</span>
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="h in portfolio.holdings" :key="h.stock.id">
+              <tr v-for="h in sortedHoldings" :key="h.stock.id">
                 <td class="symbol">{{ h.stock.symbol }}</td>
                 <td>{{ h.stock.name || '-' }}</td>
                 <td><span class="type-badge" :class="h.stock.asset_type">{{ h.stock.asset_type }}</span></td>
@@ -482,4 +517,19 @@ h1 {
 
 .positive { color: var(--green); }
 .negative { color: var(--red); }
+
+.sort-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sort-indicator {
+  display: inline-block;
+  min-width: 1ch;
+  margin-left: 0.2rem;
+}
 </style>
