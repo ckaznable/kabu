@@ -84,9 +84,30 @@ struct ExtractedResponse {
 }
 
 const PROMPT: &str = "Extract all financial/stock transactions from this PDF document. \
-    Identify each buy, sell, or dividend transaction with its stock symbol, \
-    quantity, price per share, total amount, and date if available. \
-    Return quantity as an absolute share count, not a signed value.";
+    Read every page and inspect every transaction row in the statement. \
+    The PDF may contain multiple transactions for the same symbol or date. \
+    Return one object for each individual BUY, SELL, or DIVIDEND row. \
+    Do not stop after the first transaction. Do not merge rows, summarize, or deduplicate. \
+    Ignore holdings summaries, subtotals, balances, and non-transaction rows. \
+    Identify each transaction with its stock symbol, quantity, price per share, total amount, and date if available. \
+    Return BUY/SELL quantity as an absolute share count, not a signed value. \
+    Preserve the statement order in the returned array. \
+    Before answering, double-check that the array includes every qualifying transaction row in the PDF.";
+
+fn extract_response_text(candidate: &Candidate) -> Option<String> {
+    let text = candidate
+        .content
+        .parts
+        .iter()
+        .filter_map(|part| part.text.as_deref())
+        .collect::<String>();
+
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
 
 fn build_response_schema() -> serde_json::Value {
     json!({
@@ -197,13 +218,52 @@ pub async fn extract_transactions_from_pdf(
             .candidates
             .as_ref()
             .and_then(|c| c.first())
-            .and_then(|c| c.content.parts.first())
-            .and_then(|p| p.text.as_deref())
+            .and_then(extract_response_text)
             .ok_or_else(|| anyhow::anyhow!("No response from Gemini"))?;
 
-        let extracted: ExtractedResponse = serde_json::from_str(text)?;
+        let extracted: ExtractedResponse = serde_json::from_str(&text)?;
         return Ok(extracted.transactions);
     }
 
     anyhow::bail!("Gemini API failed after {} retries: {}", MAX_RETRIES, last_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_response_text_concatenates_all_text_parts() {
+        let candidate = Candidate {
+            content: ResponseContent {
+                parts: vec![
+                    ResponsePart {
+                        text: Some("{\"transactions\":[".to_string()),
+                    },
+                    ResponsePart {
+                        text: Some("{\"symbol\":\"AAPL\"}".to_string()),
+                    },
+                    ResponsePart {
+                        text: Some("]}".to_string()),
+                    },
+                ],
+            },
+        };
+
+        assert_eq!(
+            extract_response_text(&candidate).as_deref(),
+            Some("{\"transactions\":[{\"symbol\":\"AAPL\"}]}")
+        );
+    }
+
+    #[test]
+    fn extract_response_text_ignores_empty_parts() {
+        let candidate = Candidate {
+            content: ResponseContent {
+                parts: vec![ResponsePart { text: None }, ResponsePart { text: None }],
+            },
+        };
+
+        assert_eq!(extract_response_text(&candidate), None);
+    }
 }

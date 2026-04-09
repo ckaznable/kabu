@@ -29,14 +29,10 @@ pub fn normalize_transaction_input(
         return Err("Transaction values must be finite numbers".to_string());
     }
 
-    let quantity = match transaction_type.as_str() {
-        // PDF broker statements should use whole-share counts. Normalize sign noise from LLMs.
-        "BUY" | "SELL" => quantity.abs().round(),
-        _ => quantity.abs(),
-    };
+    let quantity = quantity.abs();
 
-    if matches!(transaction_type.as_str(), "BUY" | "SELL") && quantity < 1.0 {
-        return Err("BUY/SELL quantity must be at least 1 share".to_string());
+    if matches!(transaction_type.as_str(), "BUY" | "SELL") && quantity <= 0.0 {
+        return Err("BUY/SELL quantity must be greater than 0".to_string());
     }
 
     let transaction_date = transaction_date.and_then(|value| {
