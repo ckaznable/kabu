@@ -1,6 +1,6 @@
 # Kabu
 
-Personal stock portfolio tracker. Tracks holdings, fetches live prices from Finnhub, and extracts transactions from PDF financial documents using Gemini LLM.
+Personal stock portfolio tracker. Tracks holdings, fetches live prices (global stocks via Finnhub, Taiwan stocks via TWSE/TPEX public feed), and extracts transactions from PDF financial documents using Gemini LLM.
 
 ## Architecture
 
@@ -51,6 +51,11 @@ Config file path can be overridden with the `KABU_CONFIG` env var.
 - **Finnhub** — Get a free key at https://finnhub.io/
 - **Gemini** — Get a key at https://aistudio.google.com/apikey
 - **ExchangeRate-API** — Get a key at https://www.exchangerate-api.com/
+
+### Taiwan Stock Symbols
+
+- Taiwan stocks are auto-routed to TWSE/TPEX source when symbol is numeric (e.g. `2330`) or ends with `.TW` / `.TWO`.
+- This source does not require an extra API key.
 
 ## Development
 
