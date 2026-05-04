@@ -63,6 +63,10 @@ const fmtDisplay = (usd: number) => fmt(usd * displayRate.value)
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtPct = (n: number) => n.toFixed(2)
+const portfolioWeight = (currentValue: number) => {
+  const totalValue = portfolio.value?.total_value ?? 0
+  return totalValue > 0 ? (currentValue / totalValue) * 100 : 0
+}
 const cls = (n: number) => (n > 0 ? 'positive' : n < 0 ? 'negative' : '')
 const fmtDateTime = (s: string | null) => {
   if (!s) return '-'
@@ -298,6 +302,7 @@ const topMovers = computed(() => {
                 <th class="num">Avg Cost</th>
                 <th class="num">Price</th>
                 <th class="num">Value</th>
+                <th class="num">Portfolio %</th>
                 <th class="num">
                   <button class="sort-btn" @click="toggleHoldingsSort('gain_loss')">
                     Gain/Loss <span class="sort-indicator">{{ sortIndicator('gain_loss') }}</span>
@@ -321,6 +326,17 @@ const topMovers = computed(() => {
                 </td>
                 <td class="num">{{ h.latest_price != null ? displaySymbol + fmtDisplay(h.latest_price) : '-' }}</td>
                 <td class="num">{{ displaySymbol }}{{ fmtDisplay(h.current_value) }}</td>
+                <td class="num allocation-cell">
+                  <div class="allocation-cell-inner">
+                    <span>{{ fmtPct(portfolioWeight(h.current_value)) }}%</span>
+                    <span class="allocation-track" aria-hidden="true">
+                      <span
+                        class="allocation-fill"
+                        :style="{ width: `${Math.min(portfolioWeight(h.current_value), 100)}%` }"
+                      ></span>
+                    </span>
+                  </div>
+                </td>
                 <td class="num" :class="cls(h.gain_loss)">{{ displaySymbol }}{{ fmtDisplay(h.gain_loss) }}</td>
                 <td class="num" :class="cls(h.gain_loss_percent)">{{ fmtPct(h.gain_loss_percent) }}%</td>
               </tr>
@@ -595,5 +611,31 @@ h1 {
   display: inline-block;
   min-width: 1ch;
   margin-left: 0.2rem;
+}
+
+.allocation-cell {
+  min-width: 140px;
+}
+
+.allocation-cell-inner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.allocation-track {
+  width: 72px;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  overflow: hidden;
+}
+
+.allocation-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 65%, white));
 }
 </style>
