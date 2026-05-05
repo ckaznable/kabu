@@ -1,0 +1,13 @@
+ARG BIN_PATH=container-bin/kabu-updater
+
+FROM docker.io/library/debian:bookworm-slim
+
+ARG BIN_PATH
+
+RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /data
+COPY ${BIN_PATH} /usr/local/bin/kabu-updater
+COPY migrations/ /data/migrations/
+
+ENTRYPOINT ["/usr/local/bin/kabu-updater"]

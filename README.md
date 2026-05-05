@@ -116,6 +116,42 @@ cargo build --release -p kabu-updater
 
 Both binaries read from `config.toml` (or the path in `KABU_CONFIG`).
 
+### AArch64 Container Build
+
+For an `arm64` image build on an `amd64` machine, use the helper script:
+
+```bash
+./scripts/build-kabu-aarch64.sh
+```
+
+Defaults:
+
+- package: `kabu-server`
+- image tag: `kabu-server:aarch64`
+- `TARGET_TRIPLE=aarch64-unknown-linux-gnu`
+
+Examples:
+
+```bash
+# Build the server image
+./scripts/build-kabu-aarch64.sh
+
+# Build the updater image
+./scripts/build-kabu-aarch64.sh kabu-updater
+
+# Override the output image tag
+./scripts/build-kabu-aarch64.sh kabu-server registry.example.com/kabu-server:latest
+```
+
+Requirements:
+
+- `cargo`
+- `rustup`
+- `cargo-zigbuild`
+- `zig`
+- `podman`
+- `npm` (only for `kabu-server`, to produce `frontend/dist`)
+
 ## API Endpoints
 
 | Method   | Path                     | Description                                 |
