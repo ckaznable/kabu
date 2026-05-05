@@ -34,7 +34,13 @@ fn parse_price(raw: &str) -> Option<f64> {
 }
 
 fn detect_market(symbol: &str) -> Option<&'static str> {
-    if symbol.ends_with(".TW") || symbol.chars().all(|c| c.is_ascii_digit()) {
+    if symbol.ends_with(".TW")
+        || symbol
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+    {
         return Some("tse");
     }
     if symbol.ends_with(".TWO") {

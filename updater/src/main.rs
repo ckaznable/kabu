@@ -7,7 +7,13 @@ mod finnhub;
 mod twse;
 
 fn is_tw_symbol(symbol: &str) -> bool {
-    symbol.ends_with(".TW") || symbol.ends_with(".TWO") || symbol.chars().all(|c| c.is_ascii_digit())
+    symbol.ends_with(".TW")
+        || symbol.ends_with(".TWO")
+        || symbol
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
 }
 
 #[tokio::main]
