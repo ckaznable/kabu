@@ -1,14 +1,12 @@
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 
 use crate::AppState;
 use kabu_shared::db;
 use kabu_shared::models::{PortfolioSnapshot, PortfolioSummary};
 
-pub async fn summary(
-    State(state): State<AppState>,
-) -> Result<Json<PortfolioSummary>, StatusCode> {
+pub async fn summary(State(state): State<AppState>) -> Result<Json<PortfolioSummary>, StatusCode> {
     db::compute_portfolio_summary(&state.db)
         .await
         .map(Json)

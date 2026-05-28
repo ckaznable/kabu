@@ -1,6 +1,6 @@
 use anyhow::Result;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 
 use crate::models::{
@@ -156,11 +156,7 @@ pub async fn get_all_latest_prices(pool: &SqlitePool) -> Result<Vec<Price>> {
     Ok(prices)
 }
 
-pub async fn get_price_history(
-    pool: &SqlitePool,
-    symbol: &str,
-    limit: i64,
-) -> Result<Vec<Price>> {
+pub async fn get_price_history(pool: &SqlitePool, symbol: &str, limit: i64) -> Result<Vec<Price>> {
     let prices = sqlx::query_as::<_, Price>(
         "SELECT * FROM prices WHERE symbol = ? ORDER BY id DESC LIMIT ?",
     )
@@ -487,11 +483,10 @@ pub async fn insert_portfolio_snapshot(
 }
 
 pub async fn list_portfolio_snapshots(pool: &SqlitePool) -> Result<Vec<PortfolioSnapshot>> {
-    let rows = sqlx::query_as::<_, PortfolioSnapshot>(
-        "SELECT * FROM portfolio_snapshots ORDER BY id ASC",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows =
+        sqlx::query_as::<_, PortfolioSnapshot>("SELECT * FROM portfolio_snapshots ORDER BY id ASC")
+            .fetch_all(pool)
+            .await?;
     Ok(rows)
 }
 

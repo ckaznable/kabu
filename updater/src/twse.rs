@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::Deserialize;
 use sqlx::SqlitePool;
 use std::time::Duration;
@@ -58,7 +58,8 @@ fn to_tw_code(symbol: &str) -> String {
 }
 
 async fn fetch_quote(symbol: &str) -> Result<TwseQuoteItem> {
-    let market = detect_market(symbol).ok_or_else(|| anyhow!("unsupported TW symbol {}", symbol))?;
+    let market =
+        detect_market(symbol).ok_or_else(|| anyhow!("unsupported TW symbol {}", symbol))?;
     let code = to_tw_code(symbol);
     let ex_ch = format!("{}_{}.tw", market, code);
     let url = format!(

@@ -65,7 +65,9 @@ pub async fn update_crypto_prices(
         );
     }
 
-    let data = cmc.data.ok_or_else(|| anyhow::anyhow!("No data in CMC response"))?;
+    let data = cmc
+        .data
+        .ok_or_else(|| anyhow::anyhow!("No data in CMC response"))?;
 
     for symbol in symbols {
         let upper = symbol.to_uppercase();

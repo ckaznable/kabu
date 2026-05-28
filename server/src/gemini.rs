@@ -102,11 +102,7 @@ fn extract_response_text(candidate: &Candidate) -> Option<String> {
         .filter_map(|part| part.text.as_deref())
         .collect::<String>();
 
-    if text.is_empty() {
-        None
-    } else {
-        Some(text)
-    }
+    if text.is_empty() { None } else { Some(text) }
 }
 
 fn build_response_schema() -> serde_json::Value {
@@ -225,7 +221,11 @@ pub async fn extract_transactions_from_pdf(
         return Ok(extracted.transactions);
     }
 
-    anyhow::bail!("Gemini API failed after {} retries: {}", MAX_RETRIES, last_error)
+    anyhow::bail!(
+        "Gemini API failed after {} retries: {}",
+        MAX_RETRIES,
+        last_error
+    )
 }
 
 #[cfg(test)]

@@ -22,7 +22,12 @@ async fn fetch_stock_quote(api_key: &str, symbol: &str) -> Result<QuoteResponse>
         "https://finnhub.io/api/v1/quote?symbol={}&token={}",
         symbol, api_key
     );
-    let response = client.get(&url).send().await?.json::<QuoteResponse>().await?;
+    let response = client
+        .get(&url)
+        .send()
+        .await?
+        .json::<QuoteResponse>()
+        .await?;
     Ok(response)
 }
 

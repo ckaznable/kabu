@@ -1,6 +1,6 @@
+use axum::Router;
 use axum::http::StatusCode;
 use axum::routing::{any, get, post};
-use axum::Router;
 use kabu_shared::config::Config;
 use sqlx::SqlitePool;
 use tower_http::cors::CorsLayer;
@@ -44,7 +44,10 @@ async fn main() -> anyhow::Result<()> {
                 .delete(routes::stocks::delete_one),
         )
         .route("/api/portfolio/summary", get(routes::portfolio::summary))
-        .route("/api/portfolio/snapshots", get(routes::portfolio::snapshots))
+        .route(
+            "/api/portfolio/snapshots",
+            get(routes::portfolio::snapshots),
+        )
         .route("/api/pdf/upload", post(routes::pdf::upload))
         .route("/api/transactions", get(routes::transactions::list))
         .route(

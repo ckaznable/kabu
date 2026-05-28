@@ -1,6 +1,6 @@
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 
 use crate::AppState;
 use kabu_shared::db;
@@ -92,7 +92,8 @@ pub async fn create(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         if existing.is_none() {
             let avg = input.cost_basis / input.quantity;
-            let _ = db::insert_price(&state.db, &symbol, avg, None, None, None, None, None, None).await;
+            let _ =
+                db::insert_price(&state.db, &symbol, avg, None, None, None, None, None, None).await;
         }
     }
 
