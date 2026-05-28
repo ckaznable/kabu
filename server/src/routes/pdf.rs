@@ -1,10 +1,11 @@
 use axum::extract::{Multipart, State};
 use axum::http::StatusCode;
+use base64::Engine as _;
 use std::collections::HashSet;
 
+use crate::AppState;
 use crate::gemini;
 use crate::transaction_service::normalize_transaction_input;
-use crate::AppState;
 use kabu_shared::db;
 
 fn transaction_action_label(transaction_type: &str) -> &'static str {
@@ -16,13 +17,10 @@ fn transaction_action_label(transaction_type: &str) -> &'static str {
     }
 }
 
-fn decrypt_pdf_if_needed(
-    pdf_bytes: &[u8],
-    password: Option<&str>,
-) -> Result<Vec<u8>, String> {
+fn decrypt_pdf_if_needed(pdf_bytes: &[u8], password: Option<&str>) -> Result<Vec<u8>, String> {
     // Quick check: try loading to see if encrypted
-    let doc = lopdf::Document::load_mem(pdf_bytes)
-        .map_err(|e| format!("Failed to parse PDF: {}", e))?;
+    let doc =
+        lopdf::Document::load_mem(pdf_bytes).map_err(|e| format!("Failed to parse PDF: {}", e))?;
 
     if !doc.is_encrypted() {
         return Ok(pdf_bytes.to_vec());
@@ -38,6 +36,37 @@ fn decrypt_pdf_if_needed(
     Ok(output)
 }
 
+fn normalize_pdf_payload(bytes: &[u8]) -> Option<Vec<u8>> {
+    if bytes.starts_with(b"%PDF") {
+        return Some(bytes.to_vec());
+    }
+
+    let trimmed = bytes
+        .strip_prefix(b"\xef\xbb\xbf")
+        .unwrap_or(bytes)
+        .trim_ascii();
+
+    if trimmed.starts_with(b"%PDF") {
+        return Some(trimmed.to_vec());
+    }
+
+    if trimmed.starts_with(b"JVBER") {
+        let compact: Vec<u8> = trimmed
+            .iter()
+            .copied()
+            .filter(|byte| !byte.is_ascii_whitespace())
+            .collect();
+
+        if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(compact) {
+            if decoded.starts_with(b"%PDF") {
+                return Some(decoded);
+            }
+        }
+    }
+
+    None
+}
+
 pub async fn upload(
     State(state): State<AppState>,
     mut multipart: Multipart,
@@ -45,6 +74,8 @@ pub async fn upload(
     tracing::info!("PDF upload request received");
 
     let mut pdf_bytes = None;
+    let mut file_count = 0;
+    let mut skipped_files = 0;
 
     while let Some(field) = multipart
         .next_field()
@@ -52,17 +83,43 @@ pub async fn upload(
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
     {
         if field.name() == Some("file") {
-            pdf_bytes = Some(
-                field
-                    .bytes()
-                    .await
-                    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?,
+            file_count += 1;
+            let file_name = field.file_name().map(str::to_string);
+            let content_type = field.content_type().map(str::to_string);
+            let bytes = field
+                .bytes()
+                .await
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
+            if let Some(normalized) = normalize_pdf_payload(&bytes) {
+                tracing::info!(
+                    file_name = ?file_name,
+                    content_type = ?content_type,
+                    size = normalized.len(),
+                    "PDF attachment selected"
+                );
+                pdf_bytes = Some(normalized);
+                break;
+            }
+
+            skipped_files += 1;
+            tracing::warn!(
+                file_name = ?file_name,
+                content_type = ?content_type,
+                size = bytes.len(),
+                "Skipping non-PDF attachment"
             );
         }
     }
 
-    let pdf_bytes =
-        pdf_bytes.ok_or((StatusCode::BAD_REQUEST, "No file uploaded".to_string()))?;
+    let pdf_bytes = pdf_bytes.ok_or((
+        StatusCode::BAD_REQUEST,
+        if file_count == 0 {
+            "No file uploaded".to_string()
+        } else {
+            format!("No PDF attachment found in {file_count} file(s); skipped {skipped_files}")
+        },
+    ))?;
 
     let decrypted = decrypt_pdf_if_needed(&pdf_bytes, state.pdf_password.as_deref())
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
@@ -138,4 +195,41 @@ pub async fn upload(
     });
 
     Ok(StatusCode::ACCEPTED)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_pdf_payload;
+
+    #[test]
+    fn normalize_pdf_payload_accepts_raw_pdf() {
+        let bytes = b"%PDF-1.7\nbody";
+
+        assert_eq!(normalize_pdf_payload(bytes), Some(bytes.to_vec()));
+    }
+
+    #[test]
+    fn normalize_pdf_payload_accepts_base64_pdf() {
+        let bytes = b"JVBERi0xLjcKYm9keQ==";
+
+        assert_eq!(
+            normalize_pdf_payload(bytes),
+            Some(b"%PDF-1.7\nbody".to_vec())
+        );
+    }
+
+    #[test]
+    fn normalize_pdf_payload_accepts_wrapped_base64_pdf() {
+        let bytes = b"\nJVBERi0xLjcK\nYm9keQ==\n";
+
+        assert_eq!(
+            normalize_pdf_payload(bytes),
+            Some(b"%PDF-1.7\nbody".to_vec())
+        );
+    }
+
+    #[test]
+    fn normalize_pdf_payload_rejects_non_pdf() {
+        assert_eq!(normalize_pdf_payload(b"not a pdf"), None);
+    }
 }
