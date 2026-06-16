@@ -5,9 +5,19 @@ use serde_json::json;
 #[derive(Debug, Serialize)]
 struct GeminiRequest {
     contents: Vec<Content>,
+    tools: Vec<Tool>,
     #[serde(rename = "generationConfig")]
     generation_config: GenerationConfig,
 }
+
+#[derive(Debug, Serialize)]
+struct Tool {
+    #[serde(rename = "googleSearch")]
+    google_search: GoogleSearch,
+}
+
+#[derive(Debug, Serialize)]
+struct GoogleSearch {}
 
 #[derive(Debug, Serialize)]
 struct Content {
@@ -90,6 +100,9 @@ const PROMPT: &str = "Extract all financial/stock transactions from this PDF doc
     Do not stop after the first transaction. Do not merge rows, summarize, or deduplicate. \
     Ignore holdings summaries, subtotals, balances, and non-transaction rows. \
     Identify each transaction with its stock symbol, quantity, price per share, total amount, and date if available. \
+    If a transaction's ticker symbol is missing, ambiguous, or cannot be determined from the document alone \
+    (for example, only a company or fund name is shown), use Google Search to look up the correct, canonical \
+    exchange ticker symbol before answering; for Taiwan-listed securities return the numeric listing code (for example 2330). \
     Return BUY/SELL quantity as an absolute share count, not a signed value. \
     Preserve the statement order in the returned array. \
     Before answering, double-check that the array includes every qualifying transaction row in the PDF.";
@@ -172,6 +185,9 @@ pub async fn extract_transactions_from_pdf(
                 },
             ],
         }],
+        tools: vec![Tool {
+            google_search: GoogleSearch {},
+        }],
         generation_config: GenerationConfig {
             response_mime_type: "application/json".to_string(),
             response_json_schema: build_response_schema(),
@@ -253,6 +269,18 @@ mod tests {
         assert_eq!(
             extract_response_text(&candidate).as_deref(),
             Some("{\"transactions\":[{\"symbol\":\"AAPL\"}]}")
+        );
+    }
+
+    #[test]
+    fn serializes_google_search_tool_for_grounding() {
+        let tool = Tool {
+            google_search: GoogleSearch {},
+        };
+
+        assert_eq!(
+            serde_json::to_value(&tool).unwrap(),
+            serde_json::json!({ "googleSearch": {} })
         );
     }
 
